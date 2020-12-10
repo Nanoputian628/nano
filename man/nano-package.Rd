@@ -9,7 +9,7 @@
 Aim of package is to streamline entire modelling process from data preparation to model diagnostics. Has user friendly functions which creates interactive plots, builds wide range of models and allow for easy comparison between various models.
 }
 \author{
-\strong{Maintainer}: Dilshan Wijesena \email{dilshan.wijesena@gmail.com} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Dilshan Wijesena \email{dilshan.wijesena@hotmail.com} (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
 
 }
 \keyword{internal}
