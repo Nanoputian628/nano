@@ -27,7 +27,7 @@ pollution monitoring station nearest to the house.}
 \url{https://rdrr.io/cran/HRW/man/SydneyRealEstate.html}
 }
 \usage{
-property_prices
+data(property_prices)
 }
 \description{
 Ruppert and Wand (2018) give a data set called SydneyRealEstate.
