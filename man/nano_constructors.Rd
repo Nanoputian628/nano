@@ -25,6 +25,8 @@ create_nano(
 )
 }
 \arguments{
+\item{x}{list of lists with elements containing the below parameters.}
+
 \item{grid}{list of grids created by \code{h2o}.}
 
 \item{model}{list of models created by \code{h2o}, belonging to their respective grids.}

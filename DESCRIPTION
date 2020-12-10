@@ -14,6 +14,12 @@ LazyData: true
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.1.1
 Suggests: 
-    testthat
+    testthat,
+    knitr,
+    rmarkdown
 Depends: 
     R (>= 2.10)
+Imports: 
+    h2o,
+    data.table
+VignetteBuilder: knitr
