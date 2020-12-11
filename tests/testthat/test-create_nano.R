@@ -10,9 +10,9 @@ grid_1 <- h2o.loadGrid("./model/grid_1")
 grid_2 <- h2o.loadGrid("./model/grid_2")
 grid_3 <- h2o.loadGrid("./model/grid_3")
 
-model_1 <- h2o.getModel(grid_1@model_ids[[2]])
-model_2 <- h2o.getModel(grid_2@model_ids[[2]])
-model_3 <- h2o.getModel(grid_3@model_ids[[2]])
+model_1 <- h2o.getModel(grid_1@model_ids[[1]])
+model_2 <- h2o.getModel(grid_2@model_ids[[1]])
+model_3 <- h2o.getModel(grid_3@model_ids[[1]])
 
 
 nano <- try(create_nano())
