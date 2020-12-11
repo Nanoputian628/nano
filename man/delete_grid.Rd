@@ -19,7 +19,7 @@ Deletes a specified grid from a \code{nano} objetct.
 }
 \details{
 Deletes a specified grid from a \code{nano} object. When the grid is deleted, all elements associated with the grid will be
-deleted as well. I.e. all the\code{model_no}th elements in each of the lists will be deleted. If deleting a grid which is not the
+deleted as well. I.e. all the \code{model_no}th elements in each of the lists will be deleted. If deleting a grid which is not the
 last one, then subsequent elements are moved up the list by one and renamed appropriately. E.g. if there are three grids and the
 second grid is deleted, then the third grid will move to the second position and will be renamed from "grid_3" to "grid_2".
 }
