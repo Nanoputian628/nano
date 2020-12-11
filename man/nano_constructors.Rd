@@ -48,7 +48,11 @@ a \code{nano} object
 constructors for \code{nano} object
 }
 \details{
-Creates a list of list with each initialised with 10 elements by default.
+Creates a \code{nano} objected which consists of a list of list. If no arguments are supplied, \code{nano} object is created with 10
+elements initialised for each list. If supplying arguments, must supply arguments for \code{grid}, \code{model} and \code{data}. These must be in
+list format and must have the same length. If supplying the above arguments, it is optional to include varimp, pdp and interaction.
+If not supplied, they will be initialised as NA. When supplying arguments, extra elements will be initialised so total number of
+elements for each list is 10.
 }
 \examples{
 \dontrun{
