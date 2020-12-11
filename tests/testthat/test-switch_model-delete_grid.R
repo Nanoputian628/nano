@@ -2,14 +2,16 @@ context("check switch_model and delete_grid functions")
 library(testthat)
 library(nano)
 library(h2o)
+library(data.table)
 
 # setup -----
 data("property_prices")
 
 h2o.init()
-grid_1 <- h2o.loadGrid("./model/grid_1")
-grid_2 <- h2o.loadGrid("./model/grid_2")
-grid_3 <- h2o.loadGrid("./model/grid_3")
+wd <- dirname(dirname(getwd()))
+grid_1 <- h2o.loadGrid(paste0(wd, "/model/grid_1"))
+grid_2 <- h2o.loadGrid(paste0(wd, "/model/grid_2"))
+grid_3 <- h2o.loadGrid(paste0(wd, "/model/grid_3"))
 
 model_1 <- h2o.getModel(grid_1@model_ids[[1]])
 model_2 <- h2o.getModel(grid_2@model_ids[[1]])
@@ -38,7 +40,7 @@ test_that("error message produced for incorrect model_no", {
 
 nano_switch <- switch_model(nano, "grid_2_model_1", 2)
 test_that("check if model is correctly switched", {
-  expect_equal(nano_switch@model_ids, "grid_2_model_1")
+  expect_equal(nano_switch$model[[2]]@model_id, "grid_2_model_1")
 })
 
 
