@@ -29,9 +29,9 @@ grid_1 <- create_rf(hyper_params1, "grid_1")
 grid_2 <- create_rf(hyper_params2, "grid_2")
 grid_3 <- create_rf(hyper_params3, "grid_3")
 
-model_1 <- grid_1@model_idsa[[1]]
-model_2 <- grid_2@model_idsa[[1]]
-model_3 <- grid_3@model_idsa[[1]]
+model_1 <- grid_1@model_ids[[1]]
+model_2 <- grid_2@model_ids[[1]]
+model_3 <- grid_3@model_idss[[1]]
 
 
 

@@ -19,7 +19,7 @@ test_that("number of nas are correct", {
 })
 
 test_that("number of duplicates are correct", {
-  expect_equal(nrow(clean_smry$duplicates), 0)
+  expect_equal(clean_smry$duplicates, "Dataset has no duplicates!")
 })
 
 test_that("number of special characters are correct", {
