@@ -22,10 +22,31 @@
 #' @export 
 
 cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) {
+  if (!("data.frame" %in% class(data))) {
+    stop("`data` must either by a data.frame, data.table or tibble.", 
+         call. = FALSE)
+  }
+  
+  if (!all(ignore %in% names(data))) {
+    stop("`ignore` must be column names in `data`.", 
+         call. = FALSE)
+  }
+  
+  if (!is.numeric(outlier_sd)) {
+    stop("`outlier_sd` must be numeric.",
+         call. = FALSE)
+  }
+  
+  if (!is.logical(quiet)) {
+    stop("'quiet' must either be TRUE or FALSE,", 
+         call. = FALSE)
+  }
+  
   # modify dataset
   keep_var <- setdiff(names(data), ignore)
-  if (!is.data.table(data)) {
-    data <- as.data.table(data)[, keep_var, with = FALSE]
+  if (!data.table::is.data.table(data)) {
+    data.table::setDT(data)
+    data <- data[, keep_var, with = FALSE]
   }
   
   blank_num <- sapply(data, function(x) if(is.factor(x)) sum(gsub(" ", "", x) == "") else 0)
@@ -33,22 +54,22 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   if (!quiet) {
     message("Dataset has ", sum(blank_num), " blank values and ", sum(na_num), " na values.")
   }
-  
+
   if (sum(blank_num) + sum(na_num) != 0) {
     missing_var <- union(names(blank_num)[(blank_num != 0)], names(na_num)[na_num != 0])
     blank_var <- as.vector(blank_num[match(missing_var, names(blank_num))])
     na_var <- as.vector(na_num[match(missing_var, names(na_num))])
-    missing_smry <- data.table(variable   = missing_var, 
-                               blank_num  = blank_var, 
+    missing_smry <- data.table(variable   = missing_var,
+                               blank_num  = blank_var,
                                blank_perc = blank_var / nrow(data) * 100,
                                na_num     = na_var,
                                na_perc    = na_var / nrow(data) * 100,
-                               total_num  = blank_var + na_var, 
+                               total_num  = blank_var + na_var,
                                total_perc = (blank_var + na_var)/nrow(data) * 100)
   } else {
     missing_smry <- "Dataset has no missing values."
   }
-  
+
   if (sum(blank_num) != 0) {
     blank_plot <- plot(blank_num) # replace with own user defined plotting functions
   } else {
@@ -59,15 +80,15 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   } else {
     na_plot <- "Dataset has no nas"
   }
-  
+
   # duplicates in dataset
   dup_index <- duplicated(data) | duplicated(data, fromLast = TRUE)
   dup_num <- sum(dup_index)
-  if (dup_num == 0) duprows <- "Dataset has no duplicates!" else dup_rows <- data[dup_index]
+  if (dup_num == 0) dup_rows <- "Dataset has no duplicates!" else dup_rows <- data[dup_index]
   if (!quiet) {
     message("Dataset has ", dup_num, " duplicates.")
   }
-  
+
   # outliers in dataset
   outlier_fun <- function(x) {
     which(abs((x - mean(x))/sd(x)) > outlier_sd)
@@ -80,23 +101,23 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
     for (var in outlier_var) {
       outlier_row <- union(outlier_row, outlier_index[[var]])
     }
-    outliers <- copy(data)[outlier_row][
-      , outlier_var, with = FALSE][
-        , index := outlier_row
-      ]
+    outliers <- copy(data)
+    outliers <- outliers[outlier_row]
+    outliers <- outliers[, outlier_var, with = FALSE]
+    outliers <- outliers[, index := outlier_row]
     for (var in outlier_var) {
       outliers[, (var) := ifelse(outliers$index %in% outlier_index[[var]], var, "")]
     }
     outlier_cols <- rep("", nrow(outliers))
     for (var in outlier_var) {
-      outlier_cols <- ifelse(as.vector(outliers[[var]]) == "", 
-                             outlier_cols, 
+      outlier_cols <- ifelse(as.vector(outliers[[var]]) == "",
+                             outlier_cols,
                              paste(outlier_cols, as.vector(outliers[[var]]), sep = ", "))
     }
     outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
     outliers_dat <- copy(data)[outlier_row][
       , outlier_cols := outlier_cols]
-    outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions  
+    outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
   } else {
     outliers_dat <- "Dataset has no outliers!"
     outliers_plot <- "Dataset has no outliers!"
@@ -104,7 +125,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   if (!quiet) {
     message("Dataset has ", sum(outlier_num), " outliers.")
   }
-  
+
   # check for special characters
   pattern <- "/|:|\\?|<|>|\\|\\\\|\\*|\\@|\\#|\\$|\\%|\\^|\\&"
   special_index <- lapply(data, function(x) which(grepl(pattern, x)))
@@ -124,7 +145,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   if (!quiet) {
     message("Dataset has ", sum(special_num), " special characters.")
   }
-  
+
   list(blanks = blank_num,
        nas = na_num,
        missing_smry = missing_smry,
@@ -133,15 +154,13 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
        outlier_rows = outliers_dat,
        special_chars = special_num,
        special_rows = special_dat,
-       plots = list(blanks = blank_plot, 
-                     nas = na_plot, 
-                     outliers = outlier_plot, 
+       plots = list(blanks = blank_plot,
+                     nas = na_plot,
+                     outliers = outlier_plot,
                      special_chars = special_plot
                      )
        )
   
-  }
-clean <- cleanliness_smry(data, outlier_sd = 5)
-clean$missing_smry
+}
 
 

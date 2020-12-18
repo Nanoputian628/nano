@@ -1,8 +1,8 @@
 # data imputation based if variable is factor or numeric
 # remove duplicates
 
-data <- copy(property_prices)
-data$dum <- rep(c("A", "B", "C", "C"), 125)
+# data <- copy(property_prices)
+# data$dum <- rep(c("A", "B", "C", "C"), 125)
 
 data_prep <- function(data, y, ignore = c(), train_test = NA, 
                       split_ratio = 0.7, weight = NULL, target = "auto", balance = FALSE, 

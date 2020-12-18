@@ -18,8 +18,8 @@ Suggests:
     knitr,
     rmarkdown
 Depends: 
-    R (>= 2.10)
-Imports: 
-    h2o,
+    R (>= 2.10),
     data.table
+Imports: 
+    h2o
 VignetteBuilder: knitr

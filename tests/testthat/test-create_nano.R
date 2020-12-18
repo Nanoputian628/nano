@@ -7,14 +7,30 @@ library(data.table)
 data("property_prices")
 
 h2o.init()
-wd <- dirname(dirname(getwd()))
-grid_1 <- h2o.loadGrid(paste0(wd, "/model/grid_1"))
-grid_2 <- h2o.loadGrid(paste0(wd, "/model/grid_2"))
-grid_3 <- h2o.loadGrid(paste0(wd, "/model/grid_3"))
+train <- as.h2o(property_prices)
 
-model_1 <- h2o.getModel(grid_1@model_ids[[1]])
-model_2 <- h2o.getModel(grid_2@model_ids[[1]])
-model_3 <- h2o.getModel(grid_3@model_ids[[1]])
+hyper_params1 = list(ntrees = 1:2)
+hyper_params2 = list(ntrees = 3:4)
+hyper_params3 = list(ntrees = 5:6)
+
+create_rf <- function(hyper_params, grid_id){
+  grid <- h2o.grid(x               = setdiff(colnames(property_prices), "sale_price"),
+                   y               = "sale_price",
+                   training_frame  = train,
+                   algorithm       = "randomForest",
+                   grid_id         = grid_id,
+                   hyper_params    = hyper_params,
+                   nfolds          = 3,
+                   seed            = 628)
+}
+
+grid_1 <- create_rf(hyper_params1, "grid_1")
+grid_2 <- create_rf(hyper_params2, "grid_2")
+grid_3 <- create_rf(hyper_params3, "grid_3")
+
+model_1 <- grid_1@model_idsa[[1]]
+model_2 <- grid_2@model_idsa[[1]]
+model_3 <- grid_3@model_idsa[[1]]
 
 
 nano <- try(create_nano())
