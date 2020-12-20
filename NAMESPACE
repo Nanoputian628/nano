@@ -3,4 +3,6 @@
 export(cleanliness_smry)
 export(create_nano)
 export(delete_grid)
+export(missing_pattern)
 export(switch_model)
+importFrom(plotly,plot_ly)
