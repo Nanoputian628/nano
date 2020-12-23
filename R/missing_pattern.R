@@ -1,6 +1,6 @@
 #' @title Calculate Missing Pattern in Dataset 
 #' @description Creates a summary of number of missing values by combination of variables. 
-#' @importFrom plotly plot_ly
+#' @import plotly
 #' @param data dataset to be analysed.
 #' @param ignore columns in dataset to be ignored. 
 #' @param plot a logical indicating whether the results should be plotted.
