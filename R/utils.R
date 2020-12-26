@@ -54,6 +54,58 @@ toc <- function (id = 1, msg = "Elapsed time:", units = TRUE,
   invisible(res)
 }
 
+wafflecut <- function (x, intervals, buckets = intervals, na.bucket = NA, 
+                       unmatched.bucket = NA, out.as.factor = TRUE) {
+  l <- length(intervals)
+  if (l != length(buckets)) {
+    stop("FancyCut requires a 1-1 map from intervals to buckets")
+  }
+  if (!is.numeric(x)) 
+    stop("'x' must be numeric")
+  out <- rep(NA, length(x))
+  intervals_df <- parse_intervals(intervals)
+  for (index in 1:l) {
+    b <- buckets[index]
+    lower <- intervals_df$left[index]
+    upper <- intervals_df$right[index]
+    left <- intervals_df$left_strict[index]
+    right <- intervals_df$right_strict[index]
+    mask <- rep(FALSE, length(x))
+    if (left & right) {
+      mask <- x >= lower & x <= upper
+    }
+    if (left & !right) {
+      mask <- x >= lower & x < upper
+    }
+    if (!left & right) {
+      mask <- x > lower & x <= upper
+    }
+    if (!left & !right) {
+      mask <- x > lower & x < upper
+    }
+    out[mask] <- b
+  }
+  if (sum(is.na(x)) == 0L) {
+    na.bucket <- NULL
+  }
+  else {
+    out[is.na(x)] <- na.bucket
+  }
+  if (sum(is.na(out)) == 0L) {
+    unmatched.bucket <- NULL
+  }
+  else {
+    out[is.na(out)] <- unmatched.bucket
+  }
+  levels <- unique(c(buckets, na.bucket, unmatched.bucket))
+  if (out.as.factor) {
+    return(factor(out, levels = levels, exclude = NULL))
+  }
+  else {
+    return(out)
+  }
+}
+
 
 
 

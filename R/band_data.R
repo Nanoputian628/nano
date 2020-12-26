@@ -1,6 +1,5 @@
 #' @title Bands Variables in Dataset 
 #' @description Creates a custom bands for variables in dataset.
-#' @import fancycut
 #' @param data dataset to be analysed.
 #' @param intervals a list defining the bands for each of the variables.
 #' @param buckets a list defining the names of the bands for each of the variables.
@@ -167,12 +166,12 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
     # if buckets is not provided, use bands as the buckets
     if (is.null(buckets)) buckets_var <- bands else buckets_var <- buckets[[var]]
     # create bands using fancycut package
-    data[, paste0(var, "_bnd") := fancycut::wafflecut(data[[var]], 
-                                                      bands, 
-                                                      buckets_var, 
-                                                      na.bucket        = na_bucket_var, 
-                                                      unmatched.bucket = unmatched_bucket_var, 
-                                                      out.as.factor    = TRUE)]
+    data[, paste0(var, "_bnd") := wafflecut(data[[var]], 
+                                            bands, 
+                                            buckets_var, 
+                                            na.bucket        = na_bucket_var, 
+                                            unmatched.bucket = unmatched_bucket_var, 
+                                            out.as.factor    = TRUE)]
   }
   return(data)
 }
