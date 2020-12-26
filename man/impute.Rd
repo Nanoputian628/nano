@@ -10,6 +10,7 @@ impute(
   mice_method = NULL,
   pred_ignore = c(),
   impute_ignore = c(),
+  impute_outlier = Inf,
   seed = 628
 )
 }
@@ -23,6 +24,11 @@ impute(
 \item{pred_ignore}{columns in dataset to be not used in data imputation process. Only required if \code{method} = "mice".}
 
 \item{impute_ignore}{columns in dataset to be not imputed.}
+
+\item{impute_outlier}{a numeric where values which are \code{impute_outlier} standard deviations away
+from the mean will be imputed. Can either be a single number or a vector of numbers for each
+column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf}, hence
+no outliers are imputed.}
 
 \item{seed}{seed for \code{set.seed}.}
 }
@@ -40,7 +46,7 @@ factor variables will be imputed with its mode.
 If \code{method} = "mice", then imputation will be performed using the \code{mice} package. The imputation method performed by
 \code{mice} can be selected using the \code{mice_method} parameter. A single method can be specified, which will be applied to
 all eligible variables in the dataset, or a vector of methods for each variable (including variables listed in
-\code{impute_ignore}) must be specified. If the \code{mice_method} parameter is not used, then the default methods selected by
+\code{impute_ignore}) can be specified. If the \code{mice_method} parameter is not used, then the default methods selected by
 \code{mice} will be used. The \code{pred_ignore} parameter is only applicable when using the "mice" method. This specifies
 which variables should not be used in the data imputation process.
 }

@@ -29,7 +29,7 @@
 
 vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE){
   
-  if(all(!"data.frame" %in% class(data))) {
+  if (all(!"data.frame" %in% class(data))) {
     stop("`data` must be a dataset.", 
          call. = FALSE)
   }

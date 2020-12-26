@@ -1,8 +1,16 @@
-# data imputation based if variable is factor or numeric
-# remove duplicates
+# cleanliness_smry
+# missing_pattern
+# vif_step
+# impute
+# band_data
+# balance_data
+
 
 # data <- copy(property_prices)
 # data$dum <- rep(c("A", "B", "C", "C"), 125)
+
+# banding  --> fancycut package
+
 
 data_prep <- function(data, y, ignore = c(), train_test = NA, 
                       split_ratio = 0.7, weight = NULL, target = "auto", balance = FALSE, 
