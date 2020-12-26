@@ -12,30 +12,33 @@
 # banding  --> fancycut package
 
 
-data_prep <- function(data, y, ignore = c(), train_test = NA, 
+data_prep <- function(data, response, impute_ignore = c(), train_test = NA, 
                       split_ratio = 0.7, weight = NULL, target = "auto", balance = FALSE, 
-                      impute = FALSE, rm_outliers = TRUE, unique_row = TRUE, 
-                      scale = FALSE, correlation = FALSE, seed = 628, quiet = FALSE) {
+                      impute = FALSE, rm_outliers = Inf, unique_row = TRUE, 
+                      scale = FALSE, correlation = FALSE, seed = 628, quiet = FALSE, thresh = 10) {
   # set stopwatch
   tic(id = "model_preprocess")
   on.exit(toc(id = "model_preprocess", msg = "Pre-processed in", 
               quiet = TRUE))
   setDT(data)
-  if (!y %in% colnames(data)) {
-    stop(paste("You should have column 'y' in your dataset or select."))
+  if (!response %in% colnames(data)) {
+    stop(paste("'response' is not a column in `data`."))
   }
   
   #colnames(df)[colnames(df) == y] <- "tag"
   if (sum(sapply(data, is.character) > 0)) {
     col_char <- names(data)[sapply(data, is.character)]
     data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
-    cat("Following variables converted from character to factor type: ")
-    for (i in 1:length(col_char)) {
-      cat(if(i == length(col_char)) col_char[i] else paste0(col_char[i], ", "))
+    if (!quiet) {
+      cat("Following variables converted from character to factor type: ")
+      for (i in 1:length(col_char)) {
+        cat(if(i == length(col_char)) col_char[i] else paste0(col_char[i], ", "))
+      } 
     }
   }
+  
   # re-level response if factor type
-  if (y %in% col_char) {
+  if (sum(sapply(data, is.factor) > 0) & response %in% col_char) {
     freq <- as.data.frame(table(data[, y, with = FALSE]))
     base_org <- as.character(freq[1, 1])
     base_new <- as.character(freq[which.max(freq[, 2]), 1])
@@ -48,13 +51,13 @@ data_prep <- function(data, y, ignore = c(), train_test = NA,
   #df <- data.frame(df) %>% filter(!is.na(.data$tag)) %>% mutate_if(is.character, 
   #                                                                 as.factor)
   # extract response vector for manipulations
-  res <- data[[which(colnames(data) == y)]]
+  res <- data[[which(colnames(data) == response)]]
   res_levels <- unique(res)
-  model_type <- ifelse(length(res_levels) <= 10, "Classification", "Regression")
+  model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
   if (!quiet) 
     message("MODEL TYPE: ", model_type)
-  if (model_type == "Classification") 
-    res_levels <- gsub(" ", "_", res_levels)
+  # if (model_type == "Classification") 
+  #   res_levels <- gsub(" ", "_", res_levels)
   # if (model_type == "Classification" & y %in% res_levels) {
   #   stop(paste("Your y parameter can't be named as any of the labels used.", 
   #              "Please, rename", y, "into a valid column name next such as", 
@@ -71,7 +74,7 @@ data_prep <- function(data, y, ignore = c(), train_test = NA,
   if (model_type == "Regression")
     res <- as.numeric(res)
   
-  m <- missingness(data, summary = FALSE)
+  clean_smry <- cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
   if (!is.null(m)) {
     m <- mutate(m, label = paste0(.data$variable, " (", 
                                   .data$missingness, "%)"))
