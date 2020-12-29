@@ -46,15 +46,15 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   keep_var <- setdiff(names(data), ignore)
   if (!data.table::is.data.table(data)) {
     data.table::setDT(data)
-    data <- data[, keep_var, with = FALSE]
   }
+  data <- data[, keep_var, with = FALSE]
   
-  blank_num <- sapply(data, function(x) if(is.factor(x)) sum(gsub(" ", "", x) == "") else 0)
+  blank_num <- sapply(data, function(x) if(is.factor(x)) sum(gsub(" ", "", x) == "", na.rm = TRUE) else 0)
   na_num <- sapply(data, function(x) sum(is.na(x)))
   if (!quiet) {
     message("Dataset has ", sum(blank_num), " blank values and ", sum(na_num), " na values.")
   }
-
+  
   if (sum(blank_num) + sum(na_num) != 0) {
     missing_var <- union(names(blank_num)[(blank_num != 0)], names(na_num)[na_num != 0])
     blank_var <- as.vector(blank_num[match(missing_var, names(blank_num))])
@@ -69,7 +69,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   } else {
     missing_smry <- "Dataset has no missing values."
   }
-
+  
   if (sum(blank_num) != 0) {
     blank_plot <- plot(blank_num) # replace with own user defined plotting functions
   } else {
@@ -80,15 +80,21 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   } else {
     na_plot <- "Dataset has no nas"
   }
-
+  
   # duplicates in dataset
   dup_index <- duplicated(data) | duplicated(data, fromLast = TRUE)
   dup_num <- sum(dup_index)
-  if (dup_num == 0) dup_rows <- "Dataset has no duplicates!" else dup_rows <- data[dup_index]
+  if (dup_num == 0) {
+    dup_rows <- "Dataset has no duplicates!"
+    unique_rows <- copy(data)
+  } else {
+    dup_rows <- data[dup_index]
+    unique_rows <- data[!dup_index]
+  } 
   if (!quiet) {
     message("Dataset has ", dup_num, " duplicates.")
   }
-
+  
   # outliers in dataset
   outlier_fun <- function(x) {
     which(abs((x - mean(x))/sd(x)) > outlier_sd)
@@ -115,17 +121,17 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
                              paste(outlier_cols, as.vector(outliers[[var]]), sep = ", "))
     }
     outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
-    outliers_dat <- copy(data)[outlier_row][
+    outlier_dat <- copy(data)[outlier_row][
       , outlier_cols := outlier_cols]
     outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
   } else {
-    outliers_dat <- "Dataset has no outliers!"
-    outliers_plot <- "Dataset has no outliers!"
+    outlier_dat <- "Dataset has no outliers!"
+    outlier_plot <- "Dataset has no outliers!"
   }
   if (!quiet) {
     message("Dataset has ", sum(outlier_num), " outliers.")
   }
-
+  
   # check for special characters
   pattern <- "/|:|\\?|<|>|\\|\\\\|\\*|\\@|\\#|\\$|\\%|\\^|\\&"
   special_index <- lapply(data, function(x) which(grepl(pattern, x)))
@@ -145,21 +151,22 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   if (!quiet) {
     message("Dataset has ", sum(special_num), " special characters.")
   }
-
-  list(blanks = blank_num,
-       nas = na_num,
-       missing_smry = missing_smry,
-       duplicates = dup_rows,
-       outliers = outlier_num,
-       outlier_rows = outliers_dat,
-       special_chars = special_num,
-       special_rows = special_dat,
-       plots = list(blanks = blank_plot,
-                     nas = na_plot,
-                     outliers = outlier_plot,
-                     special_chars = special_plot
-                     )
+  
+  list(blanks        = blank_num   ,
+       nas           = na_num      ,
+       missing_smry  = missing_smry,
+       duplicates    = dup_rows    ,
+       unique_rows   = unique_rows ,
+       outliers      = outlier_num ,
+       outlier_rows  = outlier_dat ,
+       special_chars = special_num ,
+       special_rows  = special_dat ,
+       plots = list(blanks        = blank_plot  ,
+                    nas           = na_plot     ,
+                    outliers      = outlier_plot,
+                    special_chars = special_plot
        )
+  )
   
 }
 

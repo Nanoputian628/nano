@@ -102,16 +102,20 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     }
     impute_mm <- function(x) {
       if (is.factor(x)) {
-        replace(x, is.na(x), Mode(x[!is.na(x)]))
+        Mode(x[!is.na(x)])
       } else if (is.numeric(x)) {
-        replace(x, is.na(x), mean(x[!is.na(x)]))
+        mean(x[!is.na(x)])
       } else {
         stop("Columns to be imputed using `mean/mode` method must either be factor or numeric type.",
              call. = FALSE)
       }
     }
-    data[, (missing_var) := lapply(.SD, impute_mm), .SDcols = missing_var]
-    out <- copy(data)
+    impute_replace <- function(x) {
+      replace(x, is.na(x), impute_mm(x[!is.na(x)]))
+    }
+    data[, (missing_var) := lapply(.SD, impute_replace), .SDcols = missing_var]
+    out = list(imputed_data = data, 
+               imputation_smry = list(vars = missing_var, imputed_value = sapply(data[, missing_var, with = FALSE], impute_mm)))
   } else {
     if (!is.null(mice_method)) {
       if (length(mice_method) == 1) {
@@ -142,9 +146,14 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     data <- complete(imputed)
     setDT(data)
     if (sum(is.na(data[, setdiff(names(data), impute_ignore), with = FALSE])> 0)) {
-      message("There are still some missing values in imputed dataset. \nTo remove all missing values, run `impute` again with the `mean/mode` method.")
+      cat("The following variables still have missing values:\n")
+      not_impute_var <- names(data)[sapply(data, function(x) sum(is.na(x)) > 0)]
+      for (var in not_impute_var) {
+        cat(paste0(var, ": ", sum(is.na(data[, var, with = FALSE])), "\n"))
+      }
+      cat("To remove all missing values, run `impute` again with the `mean/mode` method.")
     }
-    out <- list(imputed_data = data, imputation_sumry = imputed)
+    out <- list(imputed_data = data, imputation_smry = imputed)
   }
   return(out)
 }

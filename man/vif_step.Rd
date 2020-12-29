@@ -19,20 +19,21 @@ printed to the console.}
 \item{remove}{a logical to indicate if variables with VIF higher than \code{thresh} should be removed. #' If \code{FALSE}, only the VIF for each variable will be output and no variables will be removed. #' Default is \code{TRUE}.}
 }
 \value{
-data.table of VIF for final selected variables.
+list containing dataset with variables with high VIF removed and a data.table of VIF for
+final selected variables.
 }
 \description{
 Detects and removes multi-collinearity via step-wise VIF selection.
 }
 \details{
-Calculates the VIF for each variable in the dataset. If \code{remove} is \code{FALSE}, then a
-data.table of the VIFs will be output. If \code{remove} is \code{TRUE}, then if the variable with the
-highest VIF has a VIF greater than \code{thresh}, that variable will be removed. This process is
-repeated sequentially until all variables have a VIF lower than \code{thresh}. Specifying \code{trace} to be
-\code{TRUE} will print the VIFs of the current selection of variables for each iteration of the
-above process. The \code{ignore} argument only applies when \code{remove} has been set to \code{TRUE}. It is
-a vector of variables in the dataset which should not be removed. However, the VIFs for these
-variables are still calculated and output.
+Calculates the VIF for each variable in the dataset. If \code{remove} is
+\code{FALSE}, then a data.table of the VIFs will be output. If \code{remove} is \code{TRUE}, then if
+the variable with the highest VIF has a VIF greater than \code{thresh}, that variable will be removed.
+This process is repeated sequentially until all variables have a VIF lower than \code{thresh}.
+Specifying \code{trace} to be \code{TRUE} will print the VIFs of the current selection of variables for
+each iteration of the above process. The \code{ignore} argument only applies when \code{remove} has been set
+to \code{TRUE}. It is a vector of variables in the dataset which should not be removed. However,
+the VIFs for these variables are still calculated and output.
 }
 \examples{
 \dontrun{

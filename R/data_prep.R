@@ -1,190 +1,250 @@
-# cleanliness_smry
-# missing_pattern
-# vif_step
-# impute
-# band_data
-# balance_data
 
-
-# data <- copy(property_prices)
-# data$dum <- rep(c("A", "B", "C", "C"), 125)
-
-# banding  --> fancycut package
-
-
-data_prep <- function(data, response, impute_ignore = c(), train_test = NA, 
-                      split_ratio = 0.7, weight = NULL, target = "auto", balance = FALSE, 
-                      impute = FALSE, rm_outliers = Inf, unique_row = TRUE, 
-                      scale = FALSE, correlation = FALSE, seed = 628, quiet = FALSE, thresh = 10) {
+data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucket, unmatched_bucket, 
+                      trunc_left = FALSE, trunc_right = FALSE, include_left = TRUE, split_ratio = 0.7, 
+                      unique_row = TRUE, impute = FALSE, impute_method = "mice", pred_ignore = c(), 
+                      impute_ignore = c(), rm_outliers = Inf, vif_select = FALSE, vif_ignore = c(), 
+                      vif_thresh = 5, balance = FALSE, balance_method = "under", balance_prop = 0.5, 
+                      scale = FALSE, seed = 628, quiet = FALSE, thresh = 10) {
   # set stopwatch
   tic(id = "model_preprocess")
   on.exit(toc(id = "model_preprocess", msg = "Pre-processed in", 
               quiet = TRUE))
-  setDT(data)
-  if (!response %in% colnames(data)) {
-    stop(paste("'response' is not a column in `data`."))
+
+  if (!"data.frame" %in% class(data)) {
+    stop("`data` must have class data.frame.", 
+         call. = FALSE)
+  }
+
+  if (!response %in% names(data)) {
+    stop(paste("'response' is not a column in `data`."), 
+         call. = FALSE)
   }
   
-  #colnames(df)[colnames(df) == y] <- "tag"
-  if (sum(sapply(data, is.character) > 0)) {
+  if (!is.numeric(split_ratio)) {
+    stop("`split_ratio` must be numeric.", 
+         call. = FALSE) 
+  }
+  
+  if (split_ratio < 0 | split_ratio > 1) {
+    stop("`split_ratio` must be between 0 and 1.",
+         call. = FALSE)
+  }
+  
+  if (!is.logical(impute)) {
+    stop("`impute` must either be TRUE or FALSE.", 
+         call. = FALSE)
+  }
+  
+  if (!is.logical(vif_select)) {
+    stop("`vif_select` must either be TRUE or FALSE.", 
+         call. = FALSE)
+  }
+  
+  if (!is.logical(balance)) {
+    stop("`balance` must either be TRUE or FALSE.", 
+         call. = FALSE)
+  }
+  
+  if (!is.logical(unique_row)) {
+    stop("`unique_row` must either be TRUE or FALSE.", 
+         call. = FALSE)
+  }
+  
+  if (!is.logical(scale)) {
+    stop("`scale` must either be TRUE or FALSE.", 
+         call. = FALSE)
+  }
+  
+  # convert characters to factors
+  setDT(data)
+  if (sum(sapply(data, is.character)) > 0) {
     col_char <- names(data)[sapply(data, is.character)]
     data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
     if (!quiet) {
-      cat("Following variables converted from character to factor type: ")
+      cat("Following variables converted from character to factor type:\n")
       for (i in 1:length(col_char)) {
-        cat(if(i == length(col_char)) col_char[i] else paste0(col_char[i], ", "))
+        cat(paste0(col_char[i], "\n"))
       } 
     }
   }
   
+  # filter rows with blanks or NAs in response
+  tmp <- sum(is.na(data[, response, with = FALSE])) + sum(data[, response, with = FALSE] == "", na.rm = TRUE)
+  if (tmp > 0) {
+    data <- data[!is.na(get(response)) & !get(response) == ""]
+    if (!quiet) {
+      message(paste0(tmp, " rows were removed due to missing values in ", response, "."))
+    }
+  }
+
+  # summary on how clean the dataset is
+  if (!quiet) {
+    message("Following numbers are based on the entire dataset.")
+  }
+  clean_smry <- cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
+  if (unique_row) {
+    data <- clean_smry$unique_rows
+    if (!quiet) {
+      if (!is.character(clean_smry$duplicates)) {
+        message(paste0(nrow(clean_smry$duplicates), " duplicates were removed from dataset."))
+      }
+    }
+  }
+  
+  # message for variables which are blank
+  if (!quiet) {
+    if (sum(clean_smry$blanks) > 0) {
+      blank_var <- names(clean_smry$blanks)[clean_smry$blanks > 0]
+      cat("The following variables have blank values:\n")
+      for (i in 1:length(blank_var)) {
+        cat(paste0(blank_var[i], ": ", clean_smry$blanks[i], "\n"))
+      }
+    } 
+    
+    # message for variables which are NA
+    if (sum(clean_smry$nas) > 0) {
+      na_var <- names(clean_smry$nas)[clean_smry$nas > 0]
+      cat("The following variables have NAs:\n")
+      for (i in 1:length(na_var)) {
+        cat(paste0(na_var[i], ": ", clean_smry$nas[i], "\n"))
+      }
+    } 
+    
+    # message for variables which have special characters
+    if (sum(clean_smry$special_chars) > 0) {
+      special_var <- names(clean_smry$special_chars)[clean_smry$special_chars > 0]
+      cat("The following variables have NAs:\n")
+      for (i in 1:length(special_var)) {
+        cat(paste0(special_var[i], ": ", clean_smry$special_chars[i], "\n"))
+      }
+    }
+  }
+  
+  # missing pattern for entire dataset
+  missing_pat <- missing_pattern(data, plot = FALSE)
+  
+  # determine type of model to be built
+  res_levels <- unique(data[[which(colnames(data) == response)]])
+  model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
+  if (!quiet) message("MODEL TYPE: ", model_type)
+  if (model_type == "Regression") data[, (response) := as.numeric(get(response))]
+
+  # band variables
+  if (!is.null(intervals)) {
+    band_data(data, intervals, buckets = buckets, na_bucket, unmatched_bucket, 
+              trunc_left = trunc_left, trunc_right = trunc_right, 
+              include_left = include_left)
+  }
+  
+  # split data to training and testing if specified
+  if (split_ratio < 1) {
+    split <- caret::createDataPartition(as.vector(data[[response]]), p = split_ratio, list = FALSE)
+    data_train <- data[split] 
+    data_test <- data[-split]
+    if (!quiet) {
+      message(paste0("Dataset split into training and testing dataset in ", split_ratio, " ratio:
+Training dataset: ", nrow(data_train), " rows
+Testing dataset: ", nrow(data_test), " rows."))
+    }
+  }
+  
   # re-level response if factor type
-  if (sum(sapply(data, is.factor) > 0) & response %in% col_char) {
-    freq <- as.data.frame(table(data[, y, with = FALSE]))
+  if (is.factor(data_train[, response, with = FALSE])) {
+    freq <- as.data.frame(table(data_train[, y, with = FALSE]))
     base_org <- as.character(freq[1, 1])
     base_new <- as.character(freq[which.max(freq[, 2]), 1])
     if (base_org != base_new) {
-      data[, (y) := relevel(data[[which(names(data) == y)]], ref = base)]
-      message("Base level of response changed from ", '"', base_org, '"', " to ", '"', base_new, '"')
-    }
-  }
-  
-  #df <- data.frame(df) %>% filter(!is.na(.data$tag)) %>% mutate_if(is.character, 
-  #                                                                 as.factor)
-  # extract response vector for manipulations
-  res <- data[[which(colnames(data) == response)]]
-  res_levels <- unique(res)
-  model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
-  if (!quiet) 
-    message("MODEL TYPE: ", model_type)
-  # if (model_type == "Classification") 
-  #   res_levels <- gsub(" ", "_", res_levels)
-  # if (model_type == "Classification" & y %in% res_levels) {
-  #   stop(paste("Your y parameter can't be named as any of the labels used.", 
-  #              "Please, rename", y, "into a valid column name next such as", 
-  #              paste0(y, "_labels for example.")))
-  # }
-
-  ## DONT THINK NEED THIS
-  # if (model_type == "Classification" & sum(grepl("^[0-9]", res_levels)) > 0) {
-  #   res <- as.factor(as.character(ifelse(grepl("^[0-9]", res), 
-  #                                        paste0("n_", res), 
-  #                                        as.character(res))))
-  # }
-  
-  if (model_type == "Regression")
-    res <- as.numeric(res)
-  
-  clean_smry <- cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
-  if (!is.null(m)) {
-    m <- mutate(m, label = paste0(.data$variable, " (", 
-                                  .data$missingness, "%)"))
-    if (!quiet) {
-      top10 <- m %>% ungroup() %>% slice(1:10)
-      which <- vector2text(top10$label, quotes = FALSE)
-      if (nrow(m) > 10) 
-        which <- paste(which, "and", nrow(m) - 
-                         10, "other.")
-      message(paste0("- MISSINGS: The following variables contain missing observations: ", 
-                     which, if (!impute & !quiet) 
-                       ". Consider using the impute parameter."))
-    }
-    if (impute) {
-      if (!quiet) 
-        message(paste(">>> Imputing", sum(m$missing), 
-                      "missing values..."))
-      df <- impute(df, seed = seed, quiet = TRUE)
-    }
-  }
-  else if (!quiet) 
-    message("- MISSINGS: No missing values in your data")
-  if (length(ignore) > 0) {
-    ignore <- ignore[ignore %in% colnames(df)]
-    if (length(ignore) > 0 & !quiet) 
-      message(paste("- SKIPPED: Ignored variables for training models:", 
-                    vector2text(ignore)))
-  }
-  temp <- df[, !colnames(df) %in% c("tag", ignore)]
-  nums <- df_str(temp, "names", quiet = TRUE)$nums
-  if (length(nums) != ncol(temp) & !quiet) 
-    message(paste("- CATEGORICALS: There are", ncol(temp) - 
-                    length(nums), "non-numerical features.", "Consider using ohse() or equivalent prior to encode categorical variables."))
-  if (scale | center & length(nums) > 0) {
-    new <- data.frame(lapply(df[nums], function(x) scale(x, 
-                                                         center = center, scale = scale)))
-    colnames(new) <- nums
-    df[nums] <- new
-    msg <- ifelse(scale & center, "scaled and centered", 
-                  ifelse(scale, "scaled", "centered"))
-    if (!quiet) 
-      message(paste0("- TRANSFORMATIONS: All numerical features (", 
-                     length(nums), ") were ", msg))
-  }
-  if (is.numeric(df$tag)) {
-    thresh <- ifelse(is.numeric(no_outliers), no_outliers, 
-                     3)
-    is_outlier <- outlier_zscore(df$tag, thresh = thresh)
-    if (!quiet & !isTRUE(no_outliers)) 
-      message(sprintf("- OUTLIERS: %s (%s) of %s values are considered outliers (Z-Score: >%ssd). %s", 
-                      formatNum(100 * sum(is_outlier)/nrow(df), 1, 
-                                pos = "%"), formatNum(sum(is_outlier), 
-                                                      0), y, thresh, ifelse(no_outliers, paste("Removing them from the dataset for better results.", 
-                                                                                               "To keep them, set the 'no_outliers' parameter."), 
-                                                                            "Consider using the 'no_outliers' parameter to remove them.")))
-    if (no_outliers) 
-      df <- df[!is_outlier, ]
-  }
-  if (is.na(train_test)) {
-    if (!quiet) 
-      message(">>> Splitting datasets...")
-    splits <- msplit(df, size = split, seed = seed, print = !quiet)
-    train <- splits$train
-    test <- splits$test
-    train_index <- splits$train_index
-  }
-  else {
-    if (train_test %in% colnames(df)) {
-      colnames(df)[colnames(df) == train_test] <- "train_test"
-      if (all(unique(as.character(df$train_test)) %in% 
-              c("train", "test"))) {
-        train <- filter(df, .data$train_test == "train")
-        test <- filter(df, .data$train_test == "test")
-        split <- nrow(train)/nrow(df)
-        ignore <- c(ignore, train_test)
-        train_index <- 1:nrow(train)
-        if (!quiet) 
-          print(table(df$train_test))
+      data_train[, (response) := relevel(data_train[[which(names(data_train) == y)]], ref = base_new)]
+      if (!quiet) {
+        message("Base level of response changed from ", '"', base_org, '"', " to ", '"', base_new, '"')
       }
-      else stop("Your train_test column should have 'train' and 'test' values only!")
     }
-    else stop(paste("There is no column named", train_test))
+    # re-level in same way for test data
+    data_test[, (response) := relevel(data_test[[which(names(data_train) == y)]], ref = base_new)]
   }
-  if (unique_train) {
-    train_rows <- nrow(train)
-    train <- distinct(train)
-    if (nrow(train) != train_rows & !quiet) 
-      message(paste("- REPEATED: There were", train_rows - 
-                      nrow(train), "repeated rows which are being suppressed for the train dataset"))
+  
+  # impute training dataset
+  if (impute) {
+    imputation_train <- impute(data_train, method = impute_method, pred_ignore = pred_ignore, 
+                               impute_ignore = impute_ignore, impute_outlier = rm_outliers, 
+                               seed = seed)
+    data_train <- imputation_train$imputed_data
+    if (impute_method == "mice") {
+      # extract imputation formula
+      pred_matrix <- imputation_train$imputation_smry$predictorMatrix
+      meth <- imputation_train$imputation_smry$method
+      # impute test dataset
+      imputation_test <- quiet((mice::mice(data_test, method = meth, 
+                                           predictorMatrix = pred_matrix, m = 1)))
+      data_test <- imputation_test$imputed_data
+    } else {
+      # extract impute mean/modes
+      impute_values <- imputation_train$imputation_smry$imputed_value
+      missing_var <- names(data_test)[colSums(is.na(data_test)) > 0][
+        !(names(data_test)[colSums(is.na(data_test))>0] %in% impute_ignore)]
+      # impute test dataset
+      for (var in missing_var) {
+        val <- impute_values[names(impute_values) == var]
+        data_test[, (var) := replace(get(var), is.na(get(var)), val)]
+      }
+    }
   }
-  if (nrow(train) > 10000 & !quiet) 
-    message("- SAMPLE: Consider sampling or reduce the 'split' argument for faster results")
-  if (model_type == "Classification" & balance) {
-    total <- nrow(train)
-    min <- freqs(train, .data$tag) %>% .$n %>% min(., na.rm = TRUE)
-    train <- train %>% group_by(.data$tag) %>% sample_n(min)
-    if (!quiet) 
-      message(paste0("- BALANCE: Training set balanced: ", 
-                     min, " observations for each (", length(cats), 
-                     ") category; using ", round(100 * nrow(train)/total, 
-                                                 2), "% of training data"))
+  
+  # vif step-wise selection
+  if (vif_select) {
+    train_vif <- vif_step(data_train, ignore = vif_ignore, thresh = vif_thresh, trace = FALSE,
+                          remove = TRUE)
+    data_train_vif <- train_vif$data
+    # keep same variables in test dataset
+    data_test_vif <- data_test[, names(data_train_vif), with = FALSE]
+    # print variables that were removed
+    if (!quiet) {
+      cat("Following variables were removed due to high VIF:\n")
+      rm_var_vif <- setdiff(names(data_train), names(data_train_vif))
+      for (var in rm_var_vif) {
+        cat(paste0(var, "\n"))
+      }
+    }
   }
-  if (model_type == "Classification") {
-    if (!all(unique(df$tag) %in% unique(train$tag))) 
-      stop(paste("You must train with all available tags:", 
-                 vector2text(unique(df$tag))))
-    if (!all(unique(df$tag) %in% unique(test$tag))) 
-      warning("You are training with tags that are not in your test set.")
+  
+  # balance training data
+  if (balance) {
+    if (model_type == "Classification" & balance) {
+      data_train_vif <- balance_data(data     = data_train_vif, 
+                                     class    = balance_class , 
+                                     response = response      , 
+                                     method   = balance_method, 
+                                     prop     = balance_prop  , 
+                                     thresh   = 20            , 
+                                     quiet    = quiet         ,
+                                     seed     = seed)
+    }
   }
-  results <- list(data = df, train_index = train_index, model_type = model_type)
-  attr(results, "type") <- "model_preprocess"
-  return(invisible(results))
+  
+  # scale dataset
+  if (scale) {
+    var_numeric <- names(data_train_vif)[sapply(data_train_vif, is.numeric)]
+    var_numeric_scale <- paste0(var_numeric, "_scale")
+    scale_var <- function(x) {
+      (x - mean(x, na.rm = TRUE)/sd(x, na.rm = TRUE))
+    }
+    # scale training dataset
+    data_train_vif[, (var_numeric_scale) := lapply(.SD, scale_var), .SDcols = var_numeric]
+    
+    # scale testing dataset
+    for (var in var_numeric) {
+      var_scale <- paste0(var, "_scale")
+      mean <- sapply(data_train_vif, function(x) mean(x, na.rm = TRUE))[names(data_train_vif) == var]
+      sd <- sapply(data_train_vif, function(x) sd(x, na.rm = TRUE))[names(data_train_vif) == var]
+      data_test_vif[, (var_scale) := (get(var) - mean)/sd]
+    }
+  }
+
+  out <- list(data = list(train_data = data_train_vif, test_data = data_test_vif),
+              clean_smry = clean_smry,
+              missing_pattern = missing_pat,
+              imputation_train_smry = if (impute) imputation_train$imputation_smry,
+              train_vif = if (vif_select) train_vif$vif
+              )
+  return(out)
 }

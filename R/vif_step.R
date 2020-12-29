@@ -7,15 +7,16 @@
 #' @param trace a logical to indicate if the sequence of which variables are removed should be 
 #' printed to the console. 
 #' @param remove a logical to indicate if variables with VIF higher than `thresh` should be removed. #' If \code{FALSE}, only the VIF for each variable will be output and no variables will be removed. #' Default is \code{TRUE}.
-#' @return data.table of VIF for final selected variables.
-#' @details Calculates the VIF for each variable in the dataset. If `remove` is \code{FALSE}, then a
-#' data.table of the VIFs will be output. If `remove` is \code{TRUE}, then if the variable with the 
-#' highest VIF has a VIF greater than `thresh`, that variable will be removed. This process is 
-#' repeated sequentially until all variables have a VIF lower than `thresh`. Specifying `trace` to be
-#' \code{TRUE} will print the VIFs of the current selection of variables for each iteration of the
-#' above process. The `ignore` argument only applies when `remove` has been set to \code{TRUE}. It is
-#' a vector of variables in the dataset which should not be removed. However, the VIFs for these 
-#' variables are still calculated and output.  
+#' @return list containing dataset with variables with high VIF removed and a data.table of VIF for
+#'  final selected variables.
+#' @details Calculates the VIF for each variable in the dataset. If `remove` is
+#' \code{FALSE}, then a data.table of the VIFs will be output. If `remove` is \code{TRUE}, then if 
+#' the variable with the highest VIF has a VIF greater than `thresh`, that variable will be removed. 
+#' This process is repeated sequentially until all variables have a VIF lower than `thresh`. 
+#' Specifying `trace` to be \code{TRUE} will print the VIFs of the current selection of variables for
+#' each iteration of the above process. The `ignore` argument only applies when `remove` has been set
+#' to \code{TRUE}. It is a vector of variables in the dataset which should not be removed. However, 
+#' the VIFs for these variables are still calculated and output.  
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
@@ -57,10 +58,10 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
   setDT(data)
   
   #get initial vif value for all comparisons of variables
-  vif_init<-NULL
-  var_names <- names(data)
+  vif_init <- NULL
+  var_names <- names(data)[sapply(data, is.numeric)]
   for(val in var_names){
-    regressors <- var_names[-which(var_names == val)]
+    regressors <- names(data)[-which(names(data) == val)]
     form <- paste(regressors, collapse = '+')
     form_in <- formula(paste(val, '~', form))
     vif_init <- rbind(vif_init, c(val, VIF(lm(form_in, data = data))))
@@ -87,7 +88,8 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
         cat('\n')
         cat(paste('All variables have VIF < ', thresh,', max VIF ', round(vif_max, 2), sep=''),'\n\n')
       }
-      return(vif_init)
+      out <- list(data = data, vif = vif_int)
+      return(out)
     }
     else {
       in_dat <- copy(data)
@@ -96,10 +98,11 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
       while(vif_max >= thresh) {
         
         vif_vals <- NULL
-        var_names <- names(in_dat)
+        vars <- names(in_dat)
+        var_names <- vars[sapply(in_dat, is.numeric)]
         
         for(val in var_names) {
-          regressors <- var_names[-which(var_names == val)]
+          regressors <- vars[-which(vars == val)]
           form <- paste(regressors, collapse = '+')
           form_in <- formula(paste(val, '~', form))
           vif_add <- VIF(lm(form_in, data = in_dat))
@@ -129,7 +132,8 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
       names(vif_vals) <- c("var", "vif")
       vif_vals[, vif := as.numeric(vif)]
       
-      return(vif_vals)
+      out = list(data = in_dat, vif = vif_vals)
+      return(out)
     }
   }
 }

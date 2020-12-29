@@ -70,7 +70,7 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
     stop("`buckets` must be a list.", 
          call. = FALSE) 
   }
-
+  
   if (!is.null(buckets) & (!(all(names(buckets) %in% names(data))) | is.null(names(buckets)))) {
     stop("names of 'buckets` must be column names in `data`.", 
          call. = FALSE)
@@ -89,7 +89,7 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
            call. = FALSE)
     }
   }
-
+  
   if (!is.null(buckets) & !setequal(names(intervals), names(buckets))) {
     stop("`intervals` and `buckets` must have the same names.",
          call. = FALSE)
@@ -108,7 +108,7 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
            call. = FALSE)
     }
   }  
-
+  
   if (!is.logical(include_left)) {
     stop("'include_left' must either be TRUE or FALSE,", 
          call. = FALSE)

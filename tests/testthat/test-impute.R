@@ -46,7 +46,7 @@ test_that("column type check", {
 data$factor <- as.factor(data$factor)
 impute_dat <- impute(data, method = "mean/mode")
 test_that("impute all values", {
-  expect_equal(sum(is.na(impute_dat)), 0)
+  expect_equal(sum(is.na(impute_dat$imputed_data)), 0)
 })
 
 
