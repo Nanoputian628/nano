@@ -3,13 +3,16 @@
 #' @importFrom mice mice
 #' @param data dataset to be analysed.
 #' @param method method of imputation. Possible methods are "mice" or "mean/mode".
-#' @param mice_method the method of imputation used by the `mice` package. Only required if `method` = "mice".
+#' @param mice_method the method of imputation used by the `mice` package. Only required if 
+#' `method` = "mice".
 #' @param pred_ignore columns in dataset to be not used in data imputation process. Only required if `method` = "mice".
 #' @param impute_ignore columns in dataset to be not imputed.
-#' @param impute_outlier a numeric where values which are `impute_outlier` standard deviations away
-#' from the mean will be imputed. Can either be a single number or a vector of numbers for each 
-#' column in `data` (including variables in `impute_ignore`. By default, set to \code{Inf}, hence 
-#' no outliers are imputed. 
+#' @param pred_matrix optional pre-defined prediction matrix to derive the imputed values when 
+#' using the "mice" method.
+#' @param impute_outlier a numeric where values which are `impute_outlier` standard deviations 
+#' away from the mean will be imputed. Can either be a single number or a vector of numbers for 
+#' each column in `data` (including variables in `impute_ignore`. By default, set to \code{Inf}, 
+#' hence no outliers are imputed. 
 #' @param seed seed for `set.seed`.  
 #' @return imputed data.table.
 #' @details Imputes missing values (blanks or NAs) in dataset. There are two possible methods of imputation. If `method`
@@ -33,7 +36,7 @@
 #' @export 
  
 
-impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(), impute_ignore = c(), impute_outlier = Inf, seed = 628) {
+impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(), impute_ignore = c(), pred_matrix = NULL, impute_outlier = Inf, seed = 628) {
   
   if (!("data.frame" %in% class(data))) {
     stop("`data` must be a dataset.", 
@@ -77,6 +80,21 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
   
   if (!is.integer(as.integer(seed))) {
     stop("`seed` must be an integer.",
+         call. = FALSE)
+  }
+  
+  if (!is.null(pred_matrix) & !"matrix" %in% class(pred_matrix)) {
+    stop("`pred_matrix` must be a matrix.", 
+         call. = FALSE)
+  }
+  
+  if (!all(colnames(pred_matrix) %in% names(data))) {
+    stop("column names of `pred_matrix` must be in `data`.", 
+         call. = FALSE)
+  }
+  
+  if (!all(colnames(pred_matrix) == rownames(pred_matrix))) {
+    stop("column names and row names of `pred_matrix` must be the same.",
          call. = FALSE)
   }
   
@@ -128,30 +146,23 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     # predictor matrix
     set.seed(seed)
     init = quiet(mice::mice(data, maxit=0))
-    meth = init$method
-    predM = init$predictorMatrix
-    if (!is.null(mice_method)) {
-      if (length(mice_method) == 1) {
-        meth <- rep(mice_method, ncol(data))
-      } else {
-        meth <- mice_method
-      }
-    }
+    if (is.null(mice_method)) meth = init$method
+    if (is.null(pred_matrix)) pred_matrix = init$predictorMatrix
     meth[names(meth) %in% impute_ignore] <- ""
-    predM[, pred_ignore] <- 0
+    pred_matrix[, pred_ignore] <- 0
     
     # perform actual imputation
     set.seed(seed)
-    imputed <- quiet(mice::mice(data, method = meth, predictorMatrix = predM, m = 1))
-    data <- complete(imputed)
+    imputed <- quiet(mice::mice(data, method = meth, predictorMatrix = pred_matrix, m = 1))
+    data <- mice::complete(imputed)
     setDT(data)
     if (sum(is.na(data[, setdiff(names(data), impute_ignore), with = FALSE])> 0)) {
-      cat("The following variables still have missing values:\n")
+      cat("The following variables still have missing values after imputation:\n")
       not_impute_var <- names(data)[sapply(data, function(x) sum(is.na(x)) > 0)]
       for (var in not_impute_var) {
         cat(paste0(var, ": ", sum(is.na(data[, var, with = FALSE])), "\n"))
       }
-      cat("To remove all missing values, run `impute` again with the `mean/mode` method.")
+      cat("To remove all missing values, run `impute` again with the `mean/mode` method.\n")
     }
     out <- list(imputed_data = data, imputation_smry = imputed)
   }

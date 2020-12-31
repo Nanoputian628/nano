@@ -10,6 +10,7 @@ impute(
   mice_method = NULL,
   pred_ignore = c(),
   impute_ignore = c(),
+  pred_matrix = NULL,
   impute_outlier = Inf,
   seed = 628
 )
@@ -19,16 +20,20 @@ impute(
 
 \item{method}{method of imputation. Possible methods are "mice" or "mean/mode".}
 
-\item{mice_method}{the method of imputation used by the \code{mice} package. Only required if \code{method} = "mice".}
+\item{mice_method}{the method of imputation used by the \code{mice} package. Only required if
+\code{method} = "mice".}
 
 \item{pred_ignore}{columns in dataset to be not used in data imputation process. Only required if \code{method} = "mice".}
 
 \item{impute_ignore}{columns in dataset to be not imputed.}
 
-\item{impute_outlier}{a numeric where values which are \code{impute_outlier} standard deviations away
-from the mean will be imputed. Can either be a single number or a vector of numbers for each
-column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf}, hence
-no outliers are imputed.}
+\item{pred_matrix}{optional pre-defined prediction matrix to derive the imputed values when
+using the "mice" method.}
+
+\item{impute_outlier}{a numeric where values which are \code{impute_outlier} standard deviations
+away from the mean will be imputed. Can either be a single number or a vector of numbers for
+each column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf},
+hence no outliers are imputed.}
 
 \item{seed}{seed for \code{set.seed}.}
 }

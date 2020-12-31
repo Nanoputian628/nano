@@ -63,7 +63,122 @@ wafflecut <- function (x, intervals, buckets = intervals, na.bucket = NA,
   if (!is.numeric(x)) 
     stop("'x' must be numeric")
   out <- rep(NA, length(x))
-  intervals_df <- parse_intervals(intervals)
+  intervals_df <- nano:::parse_intervals(intervals)
+  for (index in 1:l) {
+    b <- buckets[index]
+    lower <- intervals_df$left[index]
+    upper <- intervals_df$right[index]
+    left <- intervals_df$left_strict[index]
+    right <- intervals_df$right_strict[index]
+    mask <- rep(FALSE, length(x))
+    if (left & right) {
+      mask <- x >= lower & x <= upper
+    }
+    if (left & !right) {
+      mask <- x >= lower & x < upper
+    }
+    if (!left & right) {
+      mask <- x > lower & x <= upper
+    }
+    if (!left & !right) {
+      mask <- x > lower & x < upper
+    }
+    out[mask] <- b
+  }
+  if (sum(is.na(x)) == 0L) {
+    na.bucket <- NULL
+  }
+  else {
+    out[is.na(x)] <- na.bucket
+  }
+  if (sum(is.na(out)) == 0L) {
+    unmatched.bucket <- NULL
+  }
+  else {
+    out[is.na(out)] <- unmatched.bucket
+  }
+  levels <- unique(c(buckets, na.bucket, unmatched.bucket))
+  if (out.as.factor) {
+    return(factor(out, levels = levels, exclude = NULL))
+  }
+  else {
+    return(out)
+  }
+}
+
+
+# define parse_intervals function. From fancycut package but seems to be missing from the
+# package now, so manualy created function here. 
+parse_intervals <- function(intervals) {
+  rx <- "^\\s*(\\(|\\[)\\s*((?:[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)|(?:[-+]?Inf))\\s*,\\s*((?:[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?)|(?:[-+]?Inf))\\s*(\\)|\\])\\s*$"
+  lindex <- regexec(rx, intervals)
+  lmatch <- regmatches(intervals, lindex)
+  nrows <- length(lmatch)
+  ncols <- sapply(lmatch, length)
+  mmatch <- matrix(NA_character_, nrow = nrows, ncol = 5)
+  
+  for (x in 1:nrows) {
+    row <- lmatch[[x]]
+    n <- length(row)
+    if (n > 0) {
+      mmatch[x, 1:n] <- lmatch[[x]][1:n]
+    }
+  }
+  
+  intervals_df <- data.frame(
+    interval = intervals,
+    left = as.numeric(mmatch[, 3]),
+    right = as.numeric(mmatch[, 4]),
+    left_strict = (mmatch[, 2] == '['),
+    right_strict = (mmatch[, 5] == ']'),
+    match_count = ncols,
+    stringsAsFactors = FALSE
+  )
+  
+  # Fix if point values
+  rx <- "^[-+]?\\d*\\.?\\d+(?:[eE][-+]?\\d+)?$"
+  points <- grepl(rx, intervals)
+  intervals_df$interval[points] <- intervals[points]
+  intervals_df$left[points] <- as.numeric(intervals[points])
+  intervals_df$right[points] <- as.numeric(intervals[points])
+  intervals_df$right_strict[points] <- TRUE
+  intervals_df$left_strict[points] <- TRUE
+  intervals_df$match_count[points] <- 5
+  
+  
+  for (x in 1:nrows) {
+    
+    if (intervals_df$match_count[x] != 5) {
+      warning(paste0('The interval "',intervals_df$interval[x],'" is malformed.'))
+      next
+    }
+    
+    if (intervals_df$right[x] < intervals_df$left[x]) {
+      warning(paste0('The interval "',intervals_df$interval[x],'" has right < left.'))
+    }
+    
+    if (intervals_df$right[x] == intervals_df$left[x] &
+        (!intervals_df$left_strict[x] | !intervals_df$right_strict[x])) {
+      warning(paste0('The interval "',intervals_df$interval[x],'" is malformed.'))
+    }
+    
+  }
+  
+  return(intervals_df)
+}
+
+
+# function copied from fancycut package 
+wafflecut <- function (x, intervals, buckets = intervals, na.bucket = NA, 
+                       unmatched.bucket = NA, out.as.factor = TRUE) {
+  l <- length(intervals)
+  if (l != length(buckets)) {
+    stop("FancyCut requires a 1-1 map from intervals to buckets")
+  }
+  if (!is.numeric(x)) 
+    stop("'x' must be numeric")
+  out <- rep(NA, length(x))
+  intervals_df <- nano:::parse_intervals(intervals)
   for (index in 1:l) {
     b <- buckets[index]
     lower <- intervals_df$left[index]
