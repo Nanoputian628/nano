@@ -22,6 +22,7 @@
 #' }
 #' @rdname balance_class
 #' @export 
+#' Hi
 
 
 balance_class <- function(data, class, response, method = "under", prop = 0.5, seed = 628, thresh = 20, quiet = FALSE) {
