@@ -222,6 +222,15 @@ wafflecut <- function (x, intervals, buckets = intervals, na.bucket = NA,
 }
 
 
+# prints each element of a vector separate
+paste("dfdf", "dfdf", "dfd", sep = ", ")
+print_vector <- function(vec, sep = ", ") {
+  out <- vec[1]
+  for (i in 2:length(vec)) {
+    out <- paste(out, vec[i], sep = sep)
+  }
+  return(out)
+}
 
 
 

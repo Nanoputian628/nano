@@ -74,8 +74,8 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
                       rm_low_var = FALSE, freq_thresh = 95/5, impute = FALSE,
                       impute_method = "mice", pred_ignore = c(), impute_ignore = c(), 
                       rm_outliers = Inf, vif_select = FALSE, vif_ignore = c(), vif_thresh = 5,
-                      balance = FALSE, balance_class, balance_method = "under", balance_prop = 0.5, 
-                      scale = FALSE, seed = 628, quiet = FALSE, thresh = 10) {
+                      balance = FALSE, balance_class, balance_method = "under", 
+                      balance_prop = 0.5, scale = FALSE, seed = 628, quiet = FALSE, thresh = 10) {
   # set stopwatch
   nano:::tic(id = "data_prep")
   on.exit(nano:::toc(id = "data_prep", msg = "Data prep in", 
@@ -213,7 +213,11 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
   res_levels <- unique(data[[which(colnames(data) == response)]])
   model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
   if (!quiet) message("MODEL TYPE: ", model_type)
-  if (model_type == "Regression") data[, (response) := as.numeric(get(response))]
+  if (model_type == "Regression") {
+    data[, (response) := as.numeric(get(response))]
+  } else {
+    data[, (response) := as.factor(get(response))]
+  }
 
   # band variables
   if (!is.null(intervals)) {
@@ -348,6 +352,7 @@ Testing dataset: ", nrow(data_test), " rows."))
   }
 
   out <- list(data = list(train_data = data_train, test_data = data_test),
+              model_type = model_type,
               clean_smry = clean_smry,
               missing_pattern = missing_pat,
               imputation_train_smry = if (impute) imputation_train$imputation_smry,
