@@ -9,11 +9,12 @@
 #' @param interaction list of datasets containing interactions for each model.
 #' @param n_model number of created models.
 #' @return a `nano` object
-#' @details Creates a `nano` objected which consists of a list of list. If no arguments are supplied, `nano` object is created with 10
-#' elements initialised for each list. If supplying arguments, must supply arguments for `grid`, `model` and `data`. These must be in 
-#' list format and must have the same length. If supplying the above arguments, it is optional to include varimp, pdp and interaction. 
-#' If not supplied, they will be initialised as NA. When supplying arguments, extra elements will be initialised so total number of 
-#' elements for each list is 10.
+#' @details Creates a `nano` objected which consists of a list of list. If no arguments are 
+#' supplied, `nano` object is created with 10 elements initialised for each list. If supplying 
+#' arguments, must supply arguments for `grid`, `model` and `data`. These must be in list format 
+#' and must have the same length. If supplying the above arguments, it is optional to include 
+#' varimp, pdp and interaction. If not supplied, they will be initialised as NA. When supplying 
+#' arguments, extra elements will be initialised so total number of elements for each list is 10.
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
@@ -127,8 +128,16 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                         n_model     = as.integer(length(grid) - sum(sapply(grid, typeof) == "logical"))
 ) {
   
+  
   # function to calculate number of non NA elements in a list
   len <- function(list) length(list) - sum(sapply(list, typeof) == "logical")
+
+  # if model is not entered and grid is entered, take best model from grid by default
+  if (missing(model) & len(grid) > 0) {
+    for (i in 1:len(grid)) {
+      model[[i]] <- h2o.getModel(grid[[i]]@model_ids[[1]])
+    }
+  }
   
   # pad each list with 10 elements
   if (length(grid) < 10 & length(model) < 10 & length(data) < 10) {

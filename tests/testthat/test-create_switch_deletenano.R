@@ -5,7 +5,7 @@ library(h2o)
 library(data.table)
 
 data("property_prices")
-var <- setdiff(colnames(property_prices), "sale_price")
+var <- setdiff(colnames(property_prices), c("sale_price"))
 
 h2o.init()
 train <- as.h2o(property_prices)

@@ -80,6 +80,8 @@ away from the mean will be imputed. Can either be a single number or a vector of
 each column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf},
 hence no outliers are imputed.}
 
+\item{vif_select}{a logical specifying whether stepwise VIF selection should be performed.}
+
 \item{vif_ignore}{columns in dataset to be not removed. Only relevant if \code{remove} is
 \code{TRUE}.}
 
@@ -107,29 +109,31 @@ of unique levels in \code{response} is less than \code{thresh}, then classificat
 regression model.}
 }
 \value{
-imputed data.table.
+List containing prepared dataset with various other metrics and summaries depending
+on the arguments entered.
 }
 \description{
 Prepares dataset for modelling by cleaning, banding, imputing and by other
 options.
 }
 \details{
-Imputes missing values (blanks or NAs) in dataset. There are two possible methods of imputation. If \code{method}
-= "mean/mode", then all missing values in numeric variables will be imputed with its mean and all missing values in
-factor variables will be imputed with its mode.
+The purpose of this function is to provide a general and off-the-shelf process to
+quickly prepare raw datasets for modelling. A large amount of flexibility is provided by
+the function and has the options to: band variables, impute missing values and outliers,
+perform step-wise VIF selection and balance the dataset by class. For further details on
+these process and their arguments, see the following functions respectively contained in the
+\code{nano} package: band_data, impute, vif_step and balance_data.
 
-If \code{method} = "mice", then imputation will be performed using the \code{mice} package. The imputation method performed by
-\code{mice} can be selected using the \code{mice_method} parameter. A single method can be specified, which will be applied to
-all eligible variables in the dataset, or a vector of methods for each variable (including variables listed in
-\code{impute_ignore}) can be specified. If the \code{mice_method} parameter is not used, then the default methods selected by
-\code{mice} will be used. The \code{pred_ignore} parameter is only applicable when using the "mice" method. This specifies
-which variables should not be used in the data imputation process.
+This function also provides the option to: split the dataset into training and testing
+dataset via the \code{split_ratio} argument, remove variables with low variance via the
+\code{rm_low_var} argument and to scale numeric variables via the \code{scale} argument.
 }
 \examples{
 \dontrun{
 if(interactive()){
  data(property_prices)
- impute(property_prices)
+ data_prep(data = property_prices, split_ratio = 0.8, impute = TRUE, vif_select = TRUE,
+           quiet = TRUE)
  }
 }
 }
