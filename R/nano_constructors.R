@@ -11,14 +11,50 @@
 #' @return a `nano` object
 #' @details Creates a `nano` objected which consists of a list of list. If no arguments are 
 #' supplied, `nano` object is created with 10 elements initialised for each list. If supplying 
-#' arguments, must supply arguments for `grid`, `model` and `data`. These must be in list format 
-#' and must have the same length. If supplying the above arguments, it is optional to include 
-#' varimp, pdp and interaction. If not supplied, they will be initialised as NA. When supplying 
-#' arguments, extra elements will be initialised so total number of elements for each list is 10.
+#' arguments, must supply arguments for `grid` and `data`. These must be in list format. If the 
+#' underlying datasets for each grid are identical, then it is sufficient to only enter `data`
+#' as a list of a single dataset. If supplying the above arguments, it is optional to include 
+#' 'model', 'varimp', 'pdp' and 'interaction'. If 'model' is not supplied, then by default, 
+#' 'model' will be taken as the best model from 'grid'. If 'varimp' or 'pdp' are not supplied,
+#' they will be initialised as NA. When supplying arguments, extra elements will be initialised
+#' so total number of elements for each list is 10.
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
-#'  obj <- create_nano()
+#'  library(h2o)
+#'  library(nano)
+#'  
+#'  h2o.init()
+#'  
+#'  # import dataset
+#'  data(property_prices)
+#'  train <- as.h2o(property_prices)
+#'  
+#'  # set the response and predictors
+#'  response <- "sale_price"
+#'  var <- setdiff(colnames(property_prices), response)
+#'  
+#'  # build grids
+#'  grid_1 <- h2o.grid(x               = var,
+#'                     y               = response,
+#'                     training_frame  = train,
+#'                     algorithm       = "randomForest",
+#'                     hyper_params    = list(ntrees = 1:2),
+#'                     nfolds          = 3,
+#'                     seed            = 628)
+#'
+#'  grid_2 <- h2o.grid(x               = var,
+#'                     y               = response,
+#'                     training_frame  = train,
+#'                     algorithm       = "randomForest",
+#'                     hyper_params    = list(ntrees = 3:4),
+#'                     nfolds          = 3,
+#'                     seed            = 628)
+#'
+#'  
+#'  obj <- create_nano(grid = list(grid_1, grid_2),
+#'                     data = list(property_prices), # since underlying dataset is the same 
+#'                     ) # since model is not entered, will take best model from grids
 #'  }
 #' }
 
@@ -40,7 +76,7 @@ new_nano <- function(x = list(grid        = rep(list(NA)      , 10),
 
 #' @rdname nano_constructors
 validate_nano <- function(x) {
-  nano <- new_nano(x)
+  nano <- nano:::new_nano(x)
   values <- unclass(nano)
   
   # function to calculate number of non NA elements in a list
@@ -139,8 +175,13 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
     }
   }
   
+  # if only 1 dataset specified, assume underlying dataset for all grids are the same
+  if (len(data) == 1 & len(grid) > 1) {
+    data <- rep(data, len(grid))
+  }
+  
   # pad each list with 10 elements
-  if (length(grid) < 10 & length(model) < 10 & length(data) < 10) {
+  if (length(grid) < 10 | length(model) < 10 | length(data) < 10) {
     pad <- function (var, type) {
       extra <- 10 - length(var)
       if (type == "list") {
@@ -175,15 +216,15 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   n_model <- as.integer(n_model)
   
   # create nano object
-  validate_nano(list(grid        = grid, 
-                     model       = model, 
-                     data        = data, 
-                     varimp      = varimp, 
-                     pdp         = pdp, 
-                     interaction = interaction, 
-                     n_model     = n_model
-                     )
-                )
+  nano:::validate_nano(list(grid        = grid, 
+                            model       = model, 
+                            data        = data, 
+                            varimp      = varimp, 
+                            pdp         = pdp, 
+                            interaction = interaction, 
+                            n_model     = n_model
+                            )
+                       )
 }
 
 

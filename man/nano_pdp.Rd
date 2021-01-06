@@ -9,7 +9,6 @@ nano_pdp(
   model_no = NA,
   vars,
   plot = TRUE,
-  n_var = 10,
   subtitle = NA,
   save = FALSE,
   subdir = NA,
@@ -17,13 +16,10 @@ nano_pdp(
 )
 }
 \arguments{
-\item{model_no}{the position of the model in the list of models in the nano object. If not
-entered, the last model is taken by default.}
+\item{model_no}{the positions of each model in the list of models in the nano object for which
+the PDP should be calculated. If not entered, the last model is taken by default.}
 
 \item{plot}{a logical specifying whether the variable importance should be plotted.}
-
-\item{n_var}{only relevant if \code{plot = TRUE}. Specifies the maximum number of variables
-which should be shown in the plot.}
 
 \item{subtitle}{subtitle for the plot.}
 
