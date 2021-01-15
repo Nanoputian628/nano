@@ -5,6 +5,8 @@
 #' @param vars vector of characters. Vector containing variables in `data` to create pdps. 
 #' @param max_levels a numeric. Maximum number of unique levels to calculate pdp for each 
 #' variable.  
+#' @param row_index a numeric vector of dataset rows numbers to be used to calculate PDPs. To
+#' use entire dataset, set to -1.
 #' @return a data.tables containing pdps for each variable combined together.
 #' @details Creates a pdp for each variable specified in the `vars` argument given a h2o
 #' model. 
@@ -14,6 +16,7 @@
 #' pdps directly from a nano object, for both single and multi models, and has the option
 #' to return plots of the pdps. 
 #' @examples 
+#' \dontrun{
 #' if(interactive()){
 #'  library(h2o)
 #'  library(nano)
@@ -48,9 +51,9 @@
 
 
 
-nano_single_pdp <- function (model, data, vars, max_levels = 30) {
+nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1) {
 
-  if (!grepl("H2O", model) | !grepl("Model", model)) {
+  if (!grepl("H2O", class(model)) | !grepl("Model", class(model))) {
     stop("`model` must be a h2o model.", 
          call. = FALSE)
   }
@@ -71,7 +74,6 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30) {
   
   # convert to h20 data.frame
   data <- h2o::as.h2o(data)
-  row_index <- -1
   models_info <- h2o:::.process_models_or_automl(model, 
                                                  data, 
                                                  require_single_model = TRUE)
@@ -81,10 +83,10 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30) {
   for (var in vars) {
     if (h2o::h2o.nlevels(data[[var]]) > max_levels) {
       factor_frequencies <- h2o:::.get_feature_count(data[[var]])
-      factors_to_merge <- tail(names(factor_frequencies), n = -max_levels)
-      data[[var]] <- ifelse(data[[var]] %in% factors_to_merge, 
-                            NA_character_, 
-                            data[[var]])
+      factors_to_merge   <- tail(names(factor_frequencies), n = -max_levels)
+      data[[var]]        <- ifelse(data[[var]] %in% factors_to_merge, 
+                                   NA_character_, 
+                                   data[[var]])
       message(length(factor_frequencies) - max_levels, 
               " least common factor levels were omitted from \"", 
               var, "\" feature.")
@@ -123,7 +125,7 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30) {
         pdp <- do.call(rbind, lapply(pdps, data.table::as.data.table))
       }
       else {
-        pdp <- data.tabledata.table(pdps[[1]])
+        pdp <- data.table::data.table(pdps[[1]])
         pdp[, "target" := "Partial Depencence"]
       }
       pdp[["text"]] <- paste0("Feature Value: ", 

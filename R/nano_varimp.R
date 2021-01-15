@@ -23,7 +23,35 @@
 #' @examples
 #' \dontrun{
 #' if(interactive()){
-#'  nano_varimp(nano, model_no = 1, plot = TRUE, nvar = 5)
+#'  library(h2o)
+#'  library(nano)
+#'  
+#'  h2o.init()
+#'  
+#'  # import dataset
+#'  data(property_prices)
+#'  train <- as.h2o(property_prices)
+#'  
+#'  # set the response and predictors
+#'  response <- "sale_price"
+#'  var <- setdiff(colnames(property_prices), response)
+#'  
+#'  # build grids
+#'  grid_1 <- h2o.grid(x               = var,
+#'                     y               = response,
+#'                     training_frame  = train,
+#'                     algorithm       = "randomForest",
+#'                     hyper_params    = list(ntrees = 1:2),
+#'                     nfolds          = 3,
+#'                     seed            = 628)
+#'
+#'  obj <- create_nano(grid = list(grid_1),
+#'                     data = list(property_prices),  
+#'                     ) # since model is not entered, will take best model from grid
+#'  
+#'  # calculate varimp
+#'  nano <- nano_varimp(nano = nano, model_no = 1, plot = FALSE)
+#'  
 #'  }
 #' }
 #' @rdname nano_varimp
@@ -37,14 +65,19 @@ nano_varimp <- function (nano, model_no = NA, plot = TRUE, n_var = 10, subtitle 
          call. = FALSE)
   }
   
-  if (!is.na(model_no)) {
+  if (!any(is.na(model_no))) {
     if (!is.integer(as.integer(model_no))) {
       stop("`model_no` must be numeric.", 
            call. = FALSE)
     }
     
-    if (model_no <= 0) {
+    if (min(model_no) <= 0) {
       stop("`model_no` must be greater than 0", 
+           call. = FALSE)
+    }
+    
+    if (max(model_no) > nano$n_model) {
+      stop("`model_no` cannot be greater than the number of models.",
            call. = FALSE)
     }
   }
@@ -60,39 +93,43 @@ nano_varimp <- function (nano, model_no = NA, plot = TRUE, n_var = 10, subtitle 
   }
   
   # if model_no not entered, then use last model as default
-  if (is.na(model_no)) model_no = nano$n_model
-  # if varimp has not already been calculated for the model:
-  if (is.na(nano$varimp[model_no])) {
-    nano$varimp[model_no] <- data.table::setDT(h2o::h2o.varimp(nano$model[model_no]))
-    nano$varimp[model_no][, percentage := percentage * 100]
+  if (all(is.na(model_no))) model_no = nano$n_model
+  for (i in 1:length(model_no)) {
+    # if varimp has not already been calculated for the model:
+    num <- model_no[i]
+    if (all(is.na(nano$varimp[[num]]))) {
+      nano$varimp[[num]] <- data.table::setDT(h2o::h2o.varimp(nano$model[[num]]))
+      nano$varimp[[num]][, percentage := percentage * 100]
+      names(nano$varimp)[num] <- paste0("varimp_", num)
+    }
   }
 
-  colours <- "deepskyblue"
-  out <- data.frame(var = var, imp = 100 * imp, Type = colours)
-  if (length(var) < limit) 
-    limit <- length(var)
-  output <- out[1:limit, ]
-  p <- ggplot(output, aes(x = reorder(.data$var, .data$imp), 
-                          y = .data$imp, label = formatNum(.data$imp, 1))) + geom_col(aes(fill = .data$Type), 
-                                                                                      width = 0.08, colour = "transparent") + geom_point(aes(colour = .data$Type), 
-                                                                                                                                         size = 6.2) + coord_flip() + geom_text(hjust = 0.5, size = 2.1, 
-                                                                                                                                                                                inherit.aes = TRUE, colour = "white") + labs(title = paste0("Most Relevant Variables (top ", 
-                                                                                                                                                                                                                                            limit, " of ", length(var), ")"), x = NULL, 
-                                                                                                                                                                                                                             y = NULL) + scale_y_continuous(position = "right", 
-                                                                                                                                                                                                                                                            expand = c(0, 0), limits = c(0, 1.03 * max(output$imp))) + 
-    theme_lares2()
-  if (length(unique(output$Type)) == 1) {
-    p <- p + geom_col(fill = colours, width = 0.2, colour = "transparent") + 
-      geom_point(colour = colours, size = 6) + guides(fill = FALSE, 
-                                                      colour = FALSE) + geom_text(hjust = 0.5, size = 2, 
-                                                                                  inherit.aes = TRUE, colour = "white")
-  }
-  if (!is.na(model_name)) 
-    p <- p + labs(caption = model_name)
-  if (!is.na(subtitle)) 
-    p <- p + labs(subtitle = subtitle)
-  if (save) 
-    export_plot(p, file_name, subdir = subdir, width = 6, 
-                height = 6)
-  return(p)
+  # colours <- "deepskyblue"
+  # out <- data.frame(var = var, imp = 100 * imp, Type = colours)
+  # if (length(var) < limit) 
+  #   limit <- length(var)
+  # output <- out[1:limit, ]
+  # p <- ggplot(output, aes(x = reorder(.data$var, .data$imp), 
+  #                         y = .data$imp, label = formatNum(.data$imp, 1))) + geom_col(aes(fill = .data$Type), 
+  #                                                                                     width = 0.08, colour = "transparent") + geom_point(aes(colour = .data$Type), 
+  #                                                                                                                                        size = 6.2) + coord_flip() + geom_text(hjust = 0.5, size = 2.1, 
+  #                                                                                                                                                                               inherit.aes = TRUE, colour = "white") + labs(title = paste0("Most Relevant Variables (top ", 
+  #                                                                                                                                                                                                                                           limit, " of ", length(var), ")"), x = NULL, 
+  #                                                                                                                                                                                                                            y = NULL) + scale_y_continuous(position = "right", 
+  #                                                                                                                                                                                                                                                           expand = c(0, 0), limits = c(0, 1.03 * max(output$imp))) + 
+  #   theme_lares2()
+  # if (length(unique(output$Type)) == 1) {
+  #   p <- p + geom_col(fill = colours, width = 0.2, colour = "transparent") + 
+  #     geom_point(colour = colours, size = 6) + guides(fill = FALSE, 
+  #                                                     colour = FALSE) + geom_text(hjust = 0.5, size = 2, 
+  #                                                                                 inherit.aes = TRUE, colour = "white")
+  # }
+  # if (!is.na(model_name)) 
+  #   p <- p + labs(caption = model_name)
+  # if (!is.na(subtitle)) 
+  #   p <- p + labs(subtitle = subtitle)
+  # if (save) 
+  #   export_plot(p, file_name, subdir = subdir, width = 6, 
+  #               height = 6)
+  return(nano)
 }

@@ -4,7 +4,7 @@
 \alias{nano_multi_pdp}
 \title{Calculates PDP for multiple models}
 \usage{
-nano_multi_pdp(models, data, vars)
+nano_multi_pdp(models, data, vars, row_index = -1)
 }
 \arguments{
 \item{models}{a list of h2o models.}
@@ -12,6 +12,9 @@ nano_multi_pdp(models, data, vars)
 \item{data}{a list of datasets.}
 
 \item{vars}{a character vector of variables to create PDPs off.}
+
+\item{row_index}{a numeric vector of dataset rows numbers to be used to calculate PDPs. To
+use entire dataset, set to -1.}
 }
 \value{
 a list of data.tables containing the calculated PDPs for each model. Each data.table
@@ -46,18 +49,30 @@ if(interactive()){
  response <- "sale_price"
  var <- setdiff(colnames(property_prices), response)
  
- # build model
- grid <- h2o.grid(x               = var,
-                  y               = response,
-                  training_frame  = train,
-                  algorithm       = "randomForest",
-                  hyper_params    = list(ntrees = 1:2),
-                  nfolds          = 3,
-                  seed            = 628)
- model <- h2o.getModel(grid@model_ids[[1]])
+ # build grids
+ grid_1 <- h2o.grid(x               = var,
+                    y               = response,
+                    training_frame  = train,
+                    algorithm       = "randomForest",
+                    hyper_params    = list(ntrees = 1:2),
+                    nfolds          = 3,
+                    seed            = 628)
+
+ grid_2 <- h2o.grid(x               = var,
+                    y               = response,
+                    training_frame  = train,
+                    algorithm       = "randomForest",
+                    hyper_params    = list(ntrees = 3:4),
+                    nfolds          = 3,
+                    seed            = 628)
+ 
+ model_1 <- h2o.getModel(grid_1@model_ids[[1]])
+ model_2 <- h2o.getModel(grid_2@model_ids[[1]])
  
  # calculate pdp
- nano_multi_pdp(model, property_prices, c("lot_size", "income"))
+ nano_multi_pdp(models = list(model_1, model_2), 
+                data   = list(property_prices), 
+                vars   = c("lot_size", "income"))
  
  }
 }

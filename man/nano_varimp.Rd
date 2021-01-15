@@ -53,7 +53,35 @@ be saved in a subfolder of the working directory by using the \code{save} and \c
 \examples{
 \dontrun{
 if(interactive()){
- nano_varimp(nano, model_no = 1, plot = TRUE, nvar = 5)
+ library(h2o)
+ library(nano)
+ 
+ h2o.init()
+ 
+ # import dataset
+ data(property_prices)
+ train <- as.h2o(property_prices)
+ 
+ # set the response and predictors
+ response <- "sale_price"
+ var <- setdiff(colnames(property_prices), response)
+ 
+ # build grids
+ grid_1 <- h2o.grid(x               = var,
+                    y               = response,
+                    training_frame  = train,
+                    algorithm       = "randomForest",
+                    hyper_params    = list(ntrees = 1:2),
+                    nfolds          = 3,
+                    seed            = 628)
+
+ obj <- create_nano(grid = list(grid_1),
+                    data = list(property_prices),  
+                    ) # since model is not entered, will take best model from grid
+ 
+ # calculate varimp
+ nano <- nano_varimp(nano = nano, model_no = 1, plot = FALSE)
+ 
  }
 }
 }

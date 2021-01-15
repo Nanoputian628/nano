@@ -8,8 +8,8 @@
 \usage{
 new_nano(
   x = list(grid = rep(list(NA), 10), model = rep(list(NA), 10), data =
-    rep(data.table(NA), 10), varimp = rep(list(NA), 10), pdp = rep(list(NA), 10),
-    interaction = rep(list(NA), 10), n_model = as.integer(0))
+    rep(data.table(NA), 10), varimp = rep(list(NA), 10), pdp = rep(list(NA), 10), ice =
+    rep(list(NA), 10), interaction = rep(list(NA), 10), n_model = as.integer(0))
 )
 
 validate_nano(x)
@@ -20,6 +20,7 @@ create_nano(
   data = rep(data.table(NA), 10),
   varimp = rep(list(NA), 10),
   pdp = rep(list(NA), 10),
+  ice = rep(list(NA), 10),
   interaction = rep(list(NA), 10),
   n_model = as.integer(length(grid) - sum(sapply(grid, typeof) == "logical"))
 )
@@ -37,6 +38,8 @@ create_nano(
 
 \item{pdp}{list of datasets containing partial dependencies for each model.}
 
+\item{ice}{list of datasets containing initial conditional expectations for each model.}
+
 \item{interaction}{list of datasets containing interactions for each model.}
 
 \item{n_model}{number of created models.}
@@ -53,8 +56,8 @@ supplied, \code{nano} object is created with 10 elements initialised for each li
 arguments, must supply arguments for \code{grid} and \code{data}. These must be in list format. If the
 underlying datasets for each grid are identical, then it is sufficient to only enter \code{data}
 as a list of a single dataset. If supplying the above arguments, it is optional to include
-'model', 'varimp', 'pdp' and 'interaction'. If 'model' is not supplied, then by default,
-'model' will be taken as the best model from 'grid'. If 'varimp' or 'pdp' are not supplied,
+'model', 'varimp', 'pdp', \code{ice} and 'interaction'. If 'model' is not supplied, then by default,
+'model' will be taken as the best model from 'grid'. If 'varimp', 'pdp', \code{ice} or \code{interaction} are not supplied,
 they will be initialised as NA. When supplying arguments, extra elements will be initialised
 so total number of elements for each list is 10.
 }

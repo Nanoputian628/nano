@@ -3,13 +3,16 @@
 #' objects.
 #' @param model_no the positions of each model in the list of models in the nano object for which
 #' the PDP should be calculated. If not entered, the last model is taken by default.
+#' @param vars a character vector of variables to create PDPs off. 
+#' @param row_index a numeric vector of dataset rows numbers to be used to calculate PDPs. To
+#' use entire dataset, set to -1.
 #' @param plot a logical specifying whether the variable importance should be plotted.
 #' @param subtitle subtitle for the plot.
 #' @param save a logical specifying whether the plot should be saved into working directory.
 #' @param subdir sub directory in which the plot should be saved.
 #' @param file_name file name of the saved plot.   
-#' @return nano object with variable importance of specified model calculated. Also returns a plot
-#' if \code{plot = TRUE}.
+#' @return nano object with variable importance of specified models calculated. Also returns a 
+#' plot if \code{plot = TRUE}.
 #' @details Function first checks if the variable importance of the specified model has already 
 #' been calculated (by checking in the list \code{nano$varimp}). If it has not been calculated, 
 #' then the variable importance will be calculated and the relevant slot in \code{nano$varimp}
@@ -33,25 +36,37 @@
 #'  response <- "sale_price"
 #'  var <- setdiff(colnames(property_prices), response)
 #'  
-#'  # build model
-#'  grid <- h2o.grid(x               = var,
-#'                   y               = response,
-#'                   training_frame  = train,
-#'                   algorithm       = "randomForest",
-#'                   hyper_params    = list(ntrees = 1:2),
-#'                   nfolds          = 3,
-#'                   seed            = 628)
-#'  model <- h2o.getModel(grid@model_ids[[1]])
+#'  # build grids
+#'  grid_1 <- h2o.grid(x               = var,
+#'                     y               = response,
+#'                     training_frame  = train,
+#'                     algorithm       = "randomForest",
+#'                     hyper_params    = list(ntrees = 1:2),
+#'                     nfolds          = 3,
+#'                     seed            = 628)
+#'
+#'  grid_2 <- h2o.grid(x               = var,
+#'                     y               = response,
+#'                     training_frame  = train,
+#'                     algorithm       = "randomForest",
+#'                     hyper_params    = list(ntrees = 3:4),
+#'                     nfolds          = 3,
+#'                     seed            = 628)
+#'
 #'  
-#'  # calculate pdp
-#'  nano_multi_pdp(model, property_prices, c("lot_size", "income"))
+#'  obj <- create_nano(grid = list(grid_1, grid_2),
+#'                     data = list(property_prices), # since underlying dataset is the same 
+#'                     ) # since model is not entered, will take best model from grids
+#'  
+#'  # calculate PDP
+#'  obj <- nano_pdp(nano = obj, model_no = 1:2, vars <- c("lot_size", "income"))
 #'  
 #'  }
 #' }
 #' @rdname nano_pdp
 #' @export 
 
-nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA, 
+nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, subtitle = NA, 
                       save = FALSE, subdir = NA, file_name) {
   
   if (class(nano) != "nano") {
@@ -76,7 +91,7 @@ nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA,
     }
   }
   
-  if (!missing(vars)) {
+  if (missing(vars)) {
     stop("`vars` must be entered, there are no defaults.",
          call.= FALSE)
   }
@@ -96,23 +111,33 @@ nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA,
     }
   }
   
+  if (plot & length(model_no) > 1) {
+    for (i in 1:(length(model_no) - 1)) {
+      if (nano$model[[model_no[i]]]@parameters$y != nano$model[[model_no[i + 1]]]@parameters$y) {
+        warning("the response variable of each of the specified models are not the same hence plots will not be produced.", 
+             call. = FALSE)
+      }
+    }
+  }
+  
+  
   # check which models do not already have PDP calculated
-  models <- list()
-  vars_inc <- list()
-  data <- list()
+  models    <- list()
+  vars_inc  <- list()
+  data      <- list()
   model_inc <- c()
   j <- 1
   for (i in model_no) {
-    if (is.na(nano$pdp[[i]])) {
+    if (all(is.na(nano$pdp[[i]]))) {
       new_vars <- vars
     } else {
       new_vars <- vars[!vars %in% nano$pdp[[i]]$var]
     }
     if (length(new_vars) > 0) {
-      models[[j]] <- nano$model[[i]]
+      models[[j]]   <- nano$model[[i]]
       vars_inc[[j]] <- new_vars
-      data[[j]] <- nano$data[[i]]
-      model_inc <- c(model_inc, i)
+      data[[j]]     <- nano$data[[i]]
+      model_inc     <- c(model_inc, i)
       j <- j + 1
     }
   }
@@ -126,12 +151,12 @@ nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA,
     
     # calculate pdps for variables common across all models
     if (length(vars_multi) > 0) {
-      pdp_multi <- nano::nano_multi_pdp(models, data, vars_multi)
+      pdp_multi <- nano::nano_multi_pdp(models, data, vars_multi, row_index)
       # add calculated pdps to nano object
       for (i in 1:length(models)) {
         model_no <- model_inc[i]
         if (all(is.na(nano$pdp[[model_no]]))) {
-          nano$pdp[[model_no]] <- pdp_multi[[i]]
+          nano$pdp[[model_no]]      <- pdp_multi[[i]]
           names(nano$pdp)[model_no] <- paste0("pdp_", model_no)
         } else {
           nano$pdp[[model_no]] <- rbind(nano$pdp[[model_no]], pdp_multi[[i]])
@@ -140,19 +165,20 @@ nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA,
     }
     # for each model, calculate pdps for remaining variables
     if (sum(sapply(vars_single, length)) > 0) {
-      index <- lapply(vars_single, length) > 0
-      models_single <- models[index]
-      vars_single <- vars_single[index]
-      data_single <- data[index]
+      index            <- lapply(vars_single, length) > 0
+      models_single    <- models[index]
+      vars_single      <- vars_single[index]
+      data_single      <- data[index]
       model_inc_single <- model_inc[index]
       for (i in 1:length(models_single)) {
-        pdp_single <- nano::nano_single_pdp(models_single[[i]], 
-                                            data_single[[i]], 
-                                            vars_single[[i]])
+        pdp_single <- nano::nano_single_pdp(model     = models_single[[i]], 
+                                            data      = data_single[[i]], 
+                                            vars      = vars_single[[i]],
+                                            row_index = row_index)
         model_no <- model_inc_single[i]
         # add newly calculated pdps to nano object
         if (all(is.na(nano$pdp[[model_no]]))) {
-          nano$pdp[[model_no]] <- pdp_single
+          nano$pdp[[model_no]]      <- pdp_single
           names(nano$pdp)[model_no] <- paste0("pdp_", model_no)
         } else {
           nano$pdp[[model_no]] <- rbind(nano$pdp[[model_no]], pdp_single)
@@ -160,6 +186,6 @@ nano_pdp <- function (nano, model_no = NA, vars, plot = TRUE, subtitle = NA,
       }
     }
   }
-  
+  return(nano)
   # create plots
 }  

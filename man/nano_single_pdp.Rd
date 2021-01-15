@@ -4,7 +4,7 @@
 \alias{nano_single_pdp}
 \title{Create PDP for a Single Model}
 \usage{
-nano_single_pdp(model, data, vars, max_levels = 30)
+nano_single_pdp(model, data, vars, max_levels = 30, row_index = -1)
 }
 \arguments{
 \item{model}{a h2o model.}
@@ -15,6 +15,9 @@ nano_single_pdp(model, data, vars, max_levels = 30)
 
 \item{max_levels}{a numeric. Maximum number of unique levels to calculate pdp for each
 variable.}
+
+\item{row_index}{a numeric vector of dataset rows numbers to be used to calculate PDPs. To
+use entire dataset, set to -1.}
 }
 \value{
 a data.tables containing pdps for each variable combined together.
@@ -30,4 +33,36 @@ For creating pdps, it is recommended to instead use the \code{nano_pdp} function
 which is a wrapper for a series of functions which creates pdps. It is able to create
 pdps directly from a nano object, for both single and multi models, and has the option
 to return plots of the pdps.
+}
+\examples{
+\dontrun{
+if(interactive()){
+ library(h2o)
+ library(nano)
+ 
+ h2o.init()
+ 
+ # import dataset
+ data(property_prices)
+ train <- as.h2o(property_prices)
+ 
+ # set the response and predictors
+ response <- "sale_price"
+ var <- setdiff(colnames(property_prices), response)
+ 
+ # build model
+ grid <- h2o.grid(x               = var,
+                  y               = response,
+                  training_frame  = train,
+                  algorithm       = "randomForest",
+                  hyper_params    = list(ntrees = 1:2),
+                  nfolds          = 3,
+                  seed            = 628)
+ model <- h2o.getModel(grid@model_ids[[1]])
+ 
+ # calculate pdp
+ nano_single_pdp(model, property_prices, c("lot_size"))
+ 
+ }
+}
 }

@@ -6,6 +6,7 @@
 #' @param data list of datasets used to create each model.
 #' @param varimp list of datasets containing variable importance for each model.
 #' @param pdp list of datasets containing partial dependencies for each model.
+#' @param ice list of datasets containing initial conditional expectations for each model.
 #' @param interaction list of datasets containing interactions for each model.
 #' @param n_model number of created models.
 #' @return a `nano` object
@@ -14,8 +15,8 @@
 #' arguments, must supply arguments for `grid` and `data`. These must be in list format. If the 
 #' underlying datasets for each grid are identical, then it is sufficient to only enter `data`
 #' as a list of a single dataset. If supplying the above arguments, it is optional to include 
-#' 'model', 'varimp', 'pdp' and 'interaction'. If 'model' is not supplied, then by default, 
-#' 'model' will be taken as the best model from 'grid'. If 'varimp' or 'pdp' are not supplied,
+#' 'model', 'varimp', 'pdp', `ice` and 'interaction'. If 'model' is not supplied, then by default, 
+#' 'model' will be taken as the best model from 'grid'. If 'varimp', 'pdp', `ice` or `interaction` are not supplied,
 #' they will be initialised as NA. When supplying arguments, extra elements will be initialised
 #' so total number of elements for each list is 10.
 #' @examples 
@@ -65,6 +66,7 @@ new_nano <- function(x = list(grid        = rep(list(NA)      , 10),
                               data        = rep(data.table(NA), 10),
                               varimp      = rep(list(NA)      , 10),
                               pdp         = rep(list(NA)      , 10),
+                              ice         = rep(list(NA)      , 10),
                               interaction = rep(list(NA)      , 10),
                               n_model     = as.integer(0)
 )
@@ -141,7 +143,14 @@ validate_nano <- function(x) {
       call. = FALSE
     )
   }
-  
+
+  if (len(values$ice) != 0 & !all(lapply(values$ice, function(x) class(x)[1])[1:values$n_model] == "list")) {
+    stop(
+      "All `ice` values must be data.table class",
+      call. = FALSE
+    )
+  }
+    
   if (len(values$interaction) != 0 & !all(lapply(values$interaction, function(x) class(x)[1])[1:values$n_model] == "list")) {
     stop(
       "All `interaction` values must be data.table class",
@@ -160,6 +169,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                         data        = rep(data.table(NA), 10),
                         varimp      = rep(list(NA)      , 10),
                         pdp         = rep(list(NA)      , 10),
+                        ice         = rep(list(NA)      , 10),
                         interaction = rep(list(NA)      , 10),
                         n_model     = as.integer(length(grid) - sum(sapply(grid, typeof) == "logical"))
 ) {
@@ -196,6 +206,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
     data        <- pad(data       , "data.table")
     varimp      <- pad(varimp     , "list")
     pdp         <- pad(pdp        , "list")
+    ice         <- pad(ice        , "list")
     interaction <- pad(interaction, "list")
   }
   
@@ -210,6 +221,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   data        <- change_names(data       , "data_")
   varimp      <- change_names(varimp     , "varimp_")
   pdp         <- change_names(pdp        , "pdp_")
+  ice         <- change_names(ice        , "ice_")
   interaction <- change_names(interaction, "interaction_")
   
   # convert n_model to integer if not already
@@ -221,6 +233,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                             data        = data, 
                             varimp      = varimp, 
                             pdp         = pdp, 
+                            ice         = ice, 
                             interaction = interaction, 
                             n_model     = n_model
                             )
