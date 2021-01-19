@@ -2,3 +2,5 @@
 
 language: R
 cache: packages
+install:
+  - Rscript -e 'install.packages("ROSE", repos = "http://cran.rstudio.com")'
