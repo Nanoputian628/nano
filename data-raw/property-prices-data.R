@@ -28,6 +28,7 @@ vars <- c("sale_price",
           "dist_to_hospital",
           "dist_to_school")
 prop_dat <- prop_dat[, vars, with = FALSE]
+prop_dat[, sale_qtr := as.factor(sale_qtr)]
 
 set.seed(628)
 property_prices <- prop_dat[sample(nrow(prop_dat), 500)]

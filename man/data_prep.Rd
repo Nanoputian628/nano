@@ -14,7 +14,8 @@ data_prep(
   trunc_left = FALSE,
   trunc_right = FALSE,
   include_left = TRUE,
-  split_ratio = 0.7,
+  split_or_fold = 1,
+  holdout_ratio = 0,
   unique_row = TRUE,
   rm_low_var = FALSE,
   freq_thresh = 95/5,
@@ -56,18 +57,23 @@ data_prep(
 \item{include_left}{a logical specifying if should include the left or right endpoint for each
 interval.}
 
-\item{split_ratio}{ratio to split dataset into training and test dataset. Set to 1 to not
-split the dataset.}
+\item{split_or_fold}{a numeric. If between 0 and 1, dataset is split into training and
+testing dataset. The number specifies the percentage of rows to be kept for training. If 1,
+dataset is not split and all rows kept for training. If an integer greater than 1,
+specifies number of folds to divide the dataset into.}
 
-\item{unique_row}{a logical specifying whether duplicate rows should be deleted or retained.}
+\item{holdout_ratio}{a numeric between 0 and 1. Specifies what percentage of rows in the
+original dataset should be used for the holdout dataset.}
 
-\item{rm_low_var}{a logical specifying whether variables with low variance should be
-deleted or retained.}
+\item{unique_row}{a logical. Whether duplicate rows should be deleted or retained.}
+
+\item{rm_low_var}{a logical. Whether variables with low variance should be deleted or
+retained.}
 
 \item{freq_thresh}{the cutoff for the ratio of the most common value to the second most
 common value in which a variable is removed when \code{rm_low_var = TRUE}.}
 
-\item{impute}{a logical specifying whether missing values and outliers should be imputed.}
+\item{impute}{a logical. Whether missing values and outliers should be imputed.}
 
 \item{impute_method}{method of imputation. Possible methods are "mice" or "mean/mode".}
 
@@ -80,20 +86,20 @@ away from the mean will be imputed. Can either be a single number or a vector of
 each column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf},
 hence no outliers are imputed.}
 
-\item{vif_select}{a logical specifying whether stepwise VIF selection should be performed.}
+\item{vif_select}{a logical. Whether stepwise VIF selection should be performed.}
 
 \item{vif_ignore}{columns in dataset to be not removed. Only relevant if \code{remove} is
 \code{TRUE}.}
 
 \item{vif_thresh}{threshold of VIF for variables to be removed.}
 
-\item{balance}{a logical specifying whether the dataset should be balanced.}
+\item{balance}{a logical. Whether the dataset should be balanced.}
 
 \item{balance_class}{categorical variable in dataset to be balanced by. This is an optional
 argument.}
 
-\item{balance_method}{specifies whether undersampling or oversample should be performed. Takes
-the value "under" or "over".}
+\item{balance_method}{specifies whether undersampling or oversample should be performed.
+Takes the value "under" or "over".}
 
 \item{balance_prop}{desired distribution of response per each class.}
 
@@ -124,15 +130,27 @@ perform step-wise VIF selection and balance the dataset by class. For further de
 these process and their arguments, see the following functions respectively contained in the
 \code{nano} package: band_data, impute, vif_step and balance_data.
 
-This function also provides the option to: split the dataset into training and testing
-dataset via the \code{split_ratio} argument, remove variables with low variance via the
-\code{rm_low_var} argument and to scale numeric variables via the \code{scale} argument.
+This function also provides the option to: split the dataset into k folds, training, testing,
+holdout dataset via the \code{split_or_fold} and \code{holdout_ratio} arguments. To split dataset into
+training and testing dataset, set \code{split_or_fold} to be a number between 0 and 1. To divide the
+dataset into k folds, set \code{split_or_fold} to be an integer greater than 1. If the dataset has
+been split into training and testing, or divided into k folds, additionally, a holdout dataset
+can be created. This can be done by using the \code{holdout_ratio} argument. Importantly, the
+holdout dataset can only be created if the dataset has been split into training and testing, or
+into k folds (i.e. \code{split_or_fold} != 1).
+
+Other features available in this function are: remove variables with low variance via the
+\code{rm_low_var} argument and scale numeric variables via the \code{scale} argument.
 }
 \examples{
 \dontrun{
 if(interactive()){
  data(property_prices)
- data_prep(data = property_prices, split_ratio = 0.8, impute = TRUE, vif_select = TRUE,
+ data_prep(data = property_prices, 
+           split_or_fold = 0.7, 
+           holdout_ratio = 0.1, 
+           impute = TRUE, 
+           vif_select = TRUE,
            quiet = TRUE)
  }
 }

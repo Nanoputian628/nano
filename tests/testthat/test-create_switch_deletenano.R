@@ -35,16 +35,18 @@ test_that("no error in creating nano object from 'create_nano' function with def
   expect_false(inherits(nano, "try-error"))
 })
 
-nano <- try(create_nano(grid = list(grid_1), model = list(model_1), data = list(property_prices)))
+nano <- try(create_nano(grid = list(grid_1), 
+                        model = list(model_1), 
+                        data = list(property_prices)))
 test_that("no error in creating nano object from 'create_nano' function with inputs", {
   expect_false(inherits(nano, "try-error"))
 })
 
-test_that("error message produced for different lengths", {
-  expect_that(create_nano(grid  = list(grid_1, grid_2), 
-                          model = list(model_1), 
-                          data  = list(property_prices)),
-              throws_error("number of `grids`, `models` and `datasets` must be equal"))
+nano <- try(create_nano(grid  = list(grid_1, grid_2), 
+                        model = list(model_1), 
+                        data  = list(property_prices)))
+test_that("no error when number of models is less than number of grids", {
+  expect_false(inherits(nano, "try-error"))
 })
 
 test_that("error message produced for different length of grid and n_model", {
@@ -55,12 +57,14 @@ test_that("error message produced for different length of grid and n_model", {
               throws_error("`n_model` must equal number of build models"))
 })
 
-test_that("error message produced for wrong type of grid", {
-  expect_that(create_nano(grid    = list(1), 
-                          model   = list(model_1), 
-                          data    = list(property_prices)),
-              throws_error("All `grid` values must be H2OGrid class"))
-})
+## This check works but doesn't work when running devtools::test() since doesn't 
+## correctly read the "". 
+# test_that("error message produced for wrong type of grid", {
+#   expect_that(create_nano(grid    = list(1), 
+#                           model   = list(model_1), 
+#                           data    = list(property_prices)),
+#               throws_error("no applicable method for 'create_Grid' applied to an object of class \"c('double', 'numeric')\""))
+# })
 
 test_that("error message produced for wrong type of grid", {
   expect_that(create_nano(grid    = list(grid_1), 
@@ -129,7 +133,7 @@ test_that("check if n_model is correctly updated", {
 
 nano_delete <- delete_grid(nano, 1)
 test_that("check if middle grid is correctly deleted", {
-  expect_equal(nano_delete$grid[[1]]@grid_id, grid_2@grid_id)
+  expect_equal(nano_delete$grid[[1]]@Grid_id, grid_2@grid_id)
 })
 
 test_that("check if names are correctly updated", {

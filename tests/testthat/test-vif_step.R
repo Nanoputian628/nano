@@ -36,13 +36,13 @@ test_that("correct output for remove = FALSE", {
 
 vif <- vif_step(data, ignore = ignore, thresh = 1.5, trace = TRUE, remove = TRUE)
 test_that("variables are correctly ignored", {
-  expect_equal(all(ignore %in% vif$var), TRUE)
+  expect_equal(all(ignore %in% vif$vif$var), TRUE)
 })
 
 test_that("variables are correctly removed", {
-  expect_equal(!any(c("dist_to_coastline", "dist_to_rail_station") %in% vif$var), TRUE)
+  expect_equal(!any(c("dist_to_coastline", "dist_to_rail_station") %in% vif$vif$var), TRUE)
 })
 
 test_that("all VIF below threshold", {
-  expect_equal(max(vif$vif) < 1.5, TRUE)
+  expect_equal(max(vif$vif$vif) < 1.5, TRUE)
 })

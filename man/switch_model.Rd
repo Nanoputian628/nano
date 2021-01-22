@@ -10,7 +10,9 @@ switch_model(
   model_no,
   varimp_eval = FALSE,
   pdp_eval = FALSE,
-  interaction_eval = FALSE
+  ice_eval = FALSE,
+  interaction_eval = FALSE,
+  plot = FALSE
 )
 }
 \arguments{
@@ -22,11 +24,11 @@ switch_model(
 
 \item{varimp_eval}{calculate variable importance for the new model.}
 
-\item{pdp_eval}{calculate partial dependecies for the new model. If \code{TRUE}, then will calculate the partial dependencies for each
-of the variables the partial dependecies were calculated for the original model. If the original model did not have any partial
-dependecies, then partial dependecies will be calculated for each variable.}
+\item{pdp_eval}{calculate partial dependencies for the new model. If \code{TRUE}, then will calculate the partial dependencies for each
+of the variables the partial dependencies were calculated for the original model. If the original model did not have any partial
+dependencies, then partial dependencies will be calculated for each variable.}
 
-\item{interaction_eval}{calcualates the interactions for the new model. Follows same logic as \code{pdp_eval}.}
+\item{interaction_eval}{calculates the interactions for the new model. Follows same logic as \code{pdp_eval}.}
 }
 \value{
 a \code{nano} object with the original model replaced by the new model specified by the \code{model_id}.

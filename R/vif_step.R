@@ -88,7 +88,7 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
         cat('\n')
         cat(paste('All variables have VIF < ', thresh,', max VIF ', round(vif_max, 2), sep=''),'\n\n')
       }
-      out <- list(data = data, vif = vif_int)
+      out <- list(data = data, vif = vif_init)
       return(out)
     }
     else {

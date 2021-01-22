@@ -223,13 +223,32 @@ wafflecut <- function (x, intervals, buckets = intervals, na.bucket = NA,
 
 
 # prints each element of a vector separate
-paste("dfdf", "dfdf", "dfd", sep = ", ")
 print_vector <- function(vec, sep = ", ") {
   out <- vec[1]
   for (i in 2:length(vec)) {
     out <- paste(out, vec[i], sep = sep)
   }
   return(out)
+}
+
+
+# extracts meta data from model
+model_meta <- function(model, data) {
+  model_info <- h2o:::.process_models_or_automl(model, data)
+  meta <- list()
+  meta[["x"]] <- model_info$x
+  meta[["y"]] <- model_info$y
+  meta[["is_classification"]] <- model_info$is_classification
+  meta[["is_multinomial_classification"]] <- model_info$is_multinomial_classification
+  meta[["distribution"]] <- model@parameters$distribution
+  meta[["hyper_params"]] <- model@allparameters[c("ntrees", "max_depth", "min_rows", 
+                                                  "nbins", "stopping_rounds", 
+                                                  "stopping_tolerance", "mtries", 
+                                                  "sample_rate", "col_sample_rate_per_tree",
+                                                  "min_split_improvement")]
+  meta[["max_runtime_secs"]] <- model@allparameters$max_runtime_secs
+  meta[["seed"]] <- model@allparameters$seed
+  return(meta)
 }
 
 

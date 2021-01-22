@@ -8,6 +8,8 @@
 #' @param pdp list of datasets containing partial dependencies for each model.
 #' @param ice list of datasets containing initial conditional expectations for each model.
 #' @param interaction list of datasets containing interactions for each model.
+#' @param meta list of lists containing meta information for each model such as parameters,
+#' hyper-parameters and model type.
 #' @param n_model number of created models.
 #' @return a `nano` object
 #' @details Creates a `nano` objected which consists of a list of list. If no arguments are 
@@ -15,10 +17,14 @@
 #' arguments, must supply arguments for `grid` and `data`. These must be in list format. If the 
 #' underlying datasets for each grid are identical, then it is sufficient to only enter `data`
 #' as a list of a single dataset. If supplying the above arguments, it is optional to include 
-#' 'model', 'varimp', 'pdp', `ice` and 'interaction'. If 'model' is not supplied, then by default, 
-#' 'model' will be taken as the best model from 'grid'. If 'varimp', 'pdp', `ice` or `interaction` are not supplied,
-#' they will be initialised as NA. When supplying arguments, extra elements will be initialised
-#' so total number of elements for each list is 10.
+#' 'model', 'varimp', 'pdp', `ice`, 'interaction' and 'meta`. In fact, it is recommended to not
+#' provide `meta` since has a strict structure which other functions are dependent on, and will
+#' be calculated automatically if not provided. 
+#' 
+#' If 'model' is not supplied, then by default, model' will be taken as the best model from 'grid'. 
+#' If 'varimp', 'pdp', `ice` or `interaction` are not supplied, they will be initialised as NA. 
+#' When supplying arguments, extra elements will be initialised so total number of elements for 
+#' each list is 10.
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
@@ -68,7 +74,8 @@ new_nano <- function(x = list(grid        = rep(list(NA)      , 10),
                               pdp         = rep(list(NA)      , 10),
                               ice         = rep(list(NA)      , 10),
                               interaction = rep(list(NA)      , 10),
-                              n_model     = as.integer(0)
+                              meta        = rep(list(NA)      , 10),
+                              n_model     = as.integer(0)          
 )
 ) {
   stopifnot(is.list(x))
@@ -98,9 +105,9 @@ validate_nano <- function(x) {
     )
   }
   
-  if (values$n_model != 0 & !all(lapply(values$grid, class)[1:values$n_model] == "H2OGrid")) {
+  if (values$n_model != 0 & !all(lapply(values$grid, class)[1:values$n_model] == "Grid")) {
     stop(
-      "All `grid` values must be H2OGrid class",
+      "All `grid` values must be Grid class",
       call. = FALSE
     )
   }
@@ -157,7 +164,13 @@ validate_nano <- function(x) {
       call. = FALSE
     )
   }
-  
+
+  if (len(values$meta) != 0 & !all(lapply(values$meta, function(x) class(x)[1])[1:values$n_model] == "list")) {
+    stop(
+      "All `meta` values must be a list",
+      call. = FALSE
+    )
+  }
   nano
 }
 
@@ -171,16 +184,29 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                         pdp         = rep(list(NA)      , 10),
                         ice         = rep(list(NA)      , 10),
                         interaction = rep(list(NA)      , 10),
+                        meta        = rep(list(NA)      , 10),
                         n_model     = as.integer(length(grid) - sum(sapply(grid, typeof) == "logical"))
 ) {
-  
-  
+
   # function to calculate number of non NA elements in a list
   len <- function(list) length(list) - sum(sapply(list, typeof) == "logical")
-
-  # if model is not entered and grid is entered, take best model from grid by default
-  if (missing(model) & len(grid) > 0) {
+  
+  if (n_model != 0 & !all(grepl("H2O", sapply(model, function(x) as.vector(class(x)))[1:n_model])) & !all(grepl("Model", sapply(model, function(x) as.vector(class(x)))[1:len(model)]))) {
+    stop("All `model` values must be a H2O model", 
+         call. = FALSE
+    )
+  }
+  
+  # convert each element in grid to Grid object
+  if (len(grid) >= 1) {
     for (i in 1:len(grid)) {
+      grid[[i]] <- nano:::create_Grid(grid[[i]])
+    }
+  }
+  
+  # if model is not entered and grid is entered, take best model from grid by default
+  if (len(model) < len(grid)) {
+    for (i in (len(model)+1):len(grid)) {
       model[[i]] <- h2o.getModel(grid[[i]]@model_ids[[1]])
     }
   }
@@ -188,6 +214,13 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   # if only 1 dataset specified, assume underlying dataset for all grids are the same
   if (len(data) == 1 & len(grid) > 1) {
     data <- rep(data, len(grid))
+  }
+  
+  # fill out meta for each model
+  if (len(grid) >= 1) {
+    for (i in 1:len(grid)) {
+      meta[[i]] <- nano:::model_meta(model[[i]], as.h2o(data[[i]]))
+    }
   }
   
   # pad each list with 10 elements
@@ -208,6 +241,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
     pdp         <- pad(pdp        , "list")
     ice         <- pad(ice        , "list")
     interaction <- pad(interaction, "list")
+    meta        <- pad(meta       , "list")
   }
   
   # rename elements of each list 
@@ -223,6 +257,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   pdp         <- change_names(pdp        , "pdp_")
   ice         <- change_names(ice        , "ice_")
   interaction <- change_names(interaction, "interaction_")
+  meta        <- change_names(meta       , "meta_")
   
   # convert n_model to integer if not already
   n_model <- as.integer(n_model)
@@ -235,6 +270,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                             pdp         = pdp, 
                             ice         = ice, 
                             interaction = interaction, 
+                            meta        = meta,
                             n_model     = n_model
                             )
                        )

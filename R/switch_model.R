@@ -4,10 +4,10 @@
 #' @param model_id model_id of the new model to be switched to
 #' @param model_no position in the list of models of the model to be replaced.
 #' @param varimp_eval calculate variable importance for the new model.
-#' @param pdp_eval calculate partial dependecies for the new model. If \code{TRUE}, then will calculate the partial dependencies for each 
-#' of the variables the partial dependecies were calculated for the original model. If the original model did not have any partial
-#' dependecies, then partial dependecies will be calculated for each variable.
-#' @param interaction_eval calcualates the interactions for the new model. Follows same logic as `pdp_eval`.  
+#' @param pdp_eval calculate partial dependencies for the new model. If \code{TRUE}, then will calculate the partial dependencies for each
+#' of the variables the partial dependencies were calculated for the original model. If the original model did not have any partial
+#' dependencies, then partial dependencies will be calculated for each variable.
+#' @param interaction_eval calculates the interactions for the new model. Follows same logic as `pdp_eval`.  
 #' @return a `nano` object with the original model replaced by the new model specified by the `model_id`.
 #' @details Switches a model in a `nano` object with another model in its associated grid. By default, when a new grid is produced, the 
 #' model with the best metric (chosen by the user) is set as the associated model for that grid. Hence, the user may call this function
@@ -25,7 +25,8 @@
 #' @export 
 
 
-switch_model <- function(nano, model_id, model_no, varimp_eval = FALSE, pdp_eval = FALSE, interaction_eval = FALSE) {
+switch_model <- function(nano, model_id, model_no, varimp_eval = FALSE, pdp_eval = FALSE, 
+                        ice_eval = FALSE,  interaction_eval = FALSE, plot = FALSE) {
   
   if (class(nano) != "nano") {
     stop(
@@ -70,20 +71,51 @@ switch_model <- function(nano, model_id, model_no, varimp_eval = FALSE, pdp_eval
   # replace current model with new model
   nano$model[[model_no]] <- model
   
+  # calculate new meta data
+  nano$meta[[model_no]] <- nano:::model_meta(model, as.h2o(data))
+  
   # recalculate varimp with new model
   if (varimp_eval) {
     nano$varimp[[model_no]] <- as.data.table(h2o.varimp(model))
     names(nano$varimp)[model_no] <- paste0("varimp_", model_no)
   }  
   
-  ## NEED TO REPLACE H2O.PD_PLOT FUNCTION WITH USER DEFINED FUNCTION
   # recalculate pdp with new model
-  # if (pdp_eval) {
-  #   vars <- names(nano$pdp)
-  #   nano$pdp[[model_no]] <- lapply(vars, function(x) h2o.pd_plot(model, newdata = data, column = x))
-  #   names(nano$pdp[[model_no]]) <- vars
-  #   names(nano$pdp)[model_no] <- paste0("pdp_", model_no)
-  # }
+  if (pdp_eval) {
+    # variables to recreate pdps for
+    vars <- names(nano$pdp[[model_no]])
+    # remove previous pdp
+    nano$pdp[[model_no]] <- NA
+    # calculate new pdp
+    nano <- nano::nano_pdp(nano, model_no, vars, plot = plot)
+  }
+  
+  # recalculate ice with new model
+  if (ice_eval) {
+    ice <- data.table::copy(nano$ice[[model_no]])
+    nano$ice[[model_no]] <- NA
+    # variables to recreate pdps for
+    vars <- names(ice)
+    # if regression, extract quantiles used
+    if (!nano$meta[[model_no]]$is_classification & !nano$meta[[model_no]]$is_multinomial_classification) {
+      for (var in vars) {
+        tmp <- ice[var == var]
+        quantiles <- unique(as.numeric(gsub(".*?([0-9]+).*", "\\1", tmp$key)))/100
+        nano <- nano_ice(nano, model_no, var, quantiles, plot = FALSE)
+      }
+    } else {
+      nano <- nano_ice(nano, model_no, vars, plot = plot)
+    }
+  }
+  
+  if (interaction_eval) {
+    # variables to recreate interactions for
+    vars <- unique(sub('.*:', '', nano$interaction[[model_no]]$feature))
+    # remove previous interactions
+    nano$interaction[[model_no]] <- NA
+    # calculate new interactions
+    nano <- nano::nano_interaction(nano, model_no, vars, plot = plot)
+  }
   
   nano
 }
