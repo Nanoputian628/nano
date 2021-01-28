@@ -138,7 +138,7 @@ nano_single_ice <- function (model, data, vars, max_levels = 30, quantiles = seq
           }
           ice <- do.call(rbind, lapply(ice, data.table::as.data.table))
         } else {
-          ice <- data.table::data.table(ice[[1]])
+          ice <- data.table::data.table(ice)
           ice[, "target" := "Partial Depencence"]
         }
         

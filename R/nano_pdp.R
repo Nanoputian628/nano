@@ -140,14 +140,25 @@ nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, su
       model_inc     <- c(model_inc, i)
       j <- j + 1
     }
+    
+    # write message for pdps which have already been created
+    vars_prev_inc <- setdiff(vars, new_vars)
+    if (length(vars_prev_inc) > 0) {
+      message("For model_", model_no[i], ", pdps have already been created for the following variables:")
+      for (var in vars_prev_inc) {
+        message(" ", var)
+      } 
+    }
   }
   
+
   if (length(models) > 0) {
     ## need to calculate PDPs for required models and variables
     # variables which need to be calculated for all models
     vars_multi <- Reduce(intersect, vars_inc)
     # remaining variables for each model
     vars_single <- lapply(vars_inc, function(x) setdiff(x, vars_multi))
+    
     
     # calculate pdps for variables common across all models
     if (length(vars_multi) > 0) {
@@ -163,6 +174,7 @@ nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, su
         }
       }
     }
+    
     # for each model, calculate pdps for remaining variables
     if (sum(sapply(vars_single, length)) > 0) {
       index            <- lapply(vars_single, length) > 0

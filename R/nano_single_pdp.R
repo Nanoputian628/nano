@@ -109,7 +109,7 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
   pdp_all <- list(NA)
   for (var in vars) {
     h2o:::with_no_h2o_progress({
-      pdps <- h2o::h2o.partialPlot(object = models_info$get_model(models_info$model_ids[[1]]), 
+      pdps <- h2o::h2o.partialPlot(object = models_info$get_model(models_info$model_ids[[1]]),
                                    data = data, 
                                    cols = var, 
                                    plot = FALSE, 
@@ -125,7 +125,7 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
         pdp <- do.call(rbind, lapply(pdps, data.table::as.data.table))
       }
       else {
-        pdp <- data.table::data.table(pdps[[1]])
+        pdp <- data.table::data.table(pdps)
         pdp[, "target" := "Partial Depencence"]
       }
       pdp[["text"]] <- paste0("Feature Value: ", 

@@ -48,8 +48,9 @@ missing_pattern <- function(data, ignore = c(), plot = TRUE) {
     message("Hurray! Dataset has no missing values.")
     opt <- options(show.error.messages = FALSE)
     on.exit(options(opt))
-    stop()
+    return("Dataset has no missing values.")
   }
+  
   data <- data[, names(data)[(colSums(is_missing(data))>0)], with = FALSE]
   
   n <- nrow(data)
@@ -80,5 +81,6 @@ missing_pattern <- function(data, ignore = c(), plot = TRUE) {
               percent = miss_comb_per, 
               tabcomb = tabcomb, 
               plot    = miss_comb_plot)
+  return(res)
 }
 

@@ -151,6 +151,15 @@ nano_ice <- function (nano, model_no = NA, vars, quantiles = seq(0, 1, 0.1),
       model_inc     <- c(model_inc, i)
       j <- j + 1
     }
+    
+    # write message for pdps which have already been created
+    vars_prev_inc <- setdiff(vars, new_vars)
+    if (length(vars_prev_inc) > 0) {
+      message("For model_", model_no[i], ", ices have already been created for the following variables:")
+      for (var in vars_prev_inc) {
+        message(" ", var)
+      } 
+    }
   }
   
   if (length(models) > 0) {

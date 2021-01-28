@@ -180,7 +180,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
   }
   
   # convert characters to factors
-  setDT(data)
+  data.table::setDT(data)
   if (sum(sapply(data, is.character)) > 0) {
     col_char <- names(data)[sapply(data, is.character)]
     data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
@@ -205,7 +205,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
   if (!quiet) {
     message("Following numbers are based on the entire dataset.")
   }
-  clean_smry <- cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
+  clean_smry <- nano::cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
   if (unique_row) {
     data <- clean_smry$unique_rows
     if (!quiet) {
@@ -245,7 +245,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
   }
   
   # missing pattern for entire dataset
-  missing_pat <- missing_pattern(data, plot = FALSE)
+  missing_pat <- nano::missing_pattern(data, plot = FALSE)
   
   # determine type of model to be built
   res_levels <- unique(data[[which(colnames(data) == response)]])
@@ -259,19 +259,19 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
 
   # band variables
   if (!is.null(intervals)) {
-    band_data(data, intervals, buckets = buckets, na_bucket, unmatched_bucket, 
-              trunc_left = trunc_left, trunc_right = trunc_right, 
-              include_left = include_left)
+    nano::band_data(data, intervals, buckets = buckets, na_bucket, unmatched_bucket, 
+                    trunc_left = trunc_left, trunc_right = trunc_right, 
+                    include_left = include_left)
   }
   
   # split data or assign folds depending on value of split_or_fold
   if (split_or_fold <= 1) {
     # split dataset in training and testing
-    split <- caret::createDataPartition(as.vector(data[[response]]), p = split_ratio, list = FALSE)
+    split <- caret::createDataPartition(as.vector(data[[response]]), p = split_or_fold, list = FALSE)
     data_train <- data[split] 
     data_test <- data[-split]
     if (!quiet) {
-      message(paste0("Dataset split into training and testing dataset in ", split_ratio, " ratio:
+      message(paste0("Dataset split into training and testing dataset in ", split_or_fold, " ratio:
 Training dataset: ", nrow(data_train), " rows
 Testing dataset: ", nrow(data_test), " rows."))
     }
@@ -322,8 +322,9 @@ Testing dataset: ", nrow(data_test), " rows."))
   
   # vif step-wise selection
   if (vif_select) {
-    train_vif <- vif_step(data_train, ignore = c(vif_ignore, if (split_ratio > 1) "fold"), 
-                          thresh = vif_thresh, trace = FALSE, remove = TRUE)
+    train_vif <- nano::vif_step(data_train, 
+                                ignore = c(vif_ignore, if (split_ratio > 1) "fold"), 
+                                thresh = vif_thresh, trace = FALSE, remove = TRUE)
     
     # print variables that were removed
     if (!quiet) {
@@ -346,18 +347,17 @@ Testing dataset: ", nrow(data_test), " rows."))
     band_vars <- names(data_train)[grepl("_bnd", names(data_train), fixed = TRUE)]
     pred_ignore <- c(pred_ignore, band_vars, if (split_ratio > 1) "fold")
     impute_ignore <- c(impute_ignore, band_vars, if (split_ratio > 1) "fold")
-    imputation_train <- impute(data_train, method = impute_method, pred_ignore = pred_ignore,
-                               impute_ignore = impute_ignore, impute_outlier = rm_outliers, 
-                               seed = seed)
-    data_train <- copy(imputation_train$imputed_data)
+    imputation_train <- nano::impute(data_train, method = impute_method, 
+                                     pred_ignore = pred_ignore, impute_ignore = impute_ignore,                                      impute_outlier = rm_outliers, seed = seed)
+    data_train <- data.table::copy(imputation_train$imputed_data)
     if (nrow(data_test) > 0) {
       if (impute_method == "mice") {
         # extract imputation formula
         pred_matrix <- imputation_train$imputation_smry$predictorMatrix
         meth <- imputation_train$imputation_smry$method
         # impute test dataset
-        imputation_test <- impute(data_test, pred_matrix = pred_matrix, 
-                                  impute_outlier = rm_outliers, seed = seed)
+        imputation_test <- nano::impute(data_test, pred_matrix = pred_matrix, 
+                                        impute_outlier = rm_outliers, seed = seed)
         data_test <- copy(imputation_test$imputed_data)
       } else {
         # extract impute mean/modes
@@ -376,14 +376,14 @@ Testing dataset: ", nrow(data_test), " rows."))
   # balance training data
   if (balance) {
     if (model_type == "Classification" & balance) {
-      data_train <- balance_data(data     = data_train    , 
-                                 class    = balance_class , 
-                                 response = response      , 
-                                 method   = balance_method, 
-                                 prop     = balance_prop  , 
-                                 thresh   = 20            , 
-                                 quiet    = quiet         ,
-                                 seed     = seed)
+      data_train <- nano::balance_data(data     = data_train    , 
+                                       class    = balance_class , 
+                                       response = response      , 
+                                       method   = balance_method, 
+                                       prop     = balance_prop  , 
+                                       thresh   = 20            , 
+                                       quiet    = quiet         ,
+                                       seed     = seed)
     }
   }
   

@@ -140,6 +140,91 @@ test_that("check if names are correctly updated", {
   expect_equal(names(nano_delete$grid), c("grid_1", rep("", 9)))
 })
 
+
+
+
+# test pdp functions ----
+nano <- create_nano(grid  = list(grid_1, grid_2), 
+                    model = list(model_1, model_2), 
+                    data  = list(property_prices))
+
+test_that("error if vars not in model", {
+  expect_that(nano::nano_pdp(nano, 1, "var", plot = FALSE), 
+              throws_error("`vars` must be predictors in each of the specified models."))
+})
+
+nano <- try(nano::nano_pdp(nano, 1:2, c("sale_qtr", "income"), plot = FALSE))
+test_that("no error in calculating pdps for multiple variables and models", {
+  expect_false(inherits(nano, "try-error"))
+})
+
+nano <- try(nano::nano_pdp(nano, 1:2, c("sale_qtr", "income"), plot = FALSE))
+test_that("no error in calculating the same pdps", {
+  expect_false(inherits(nano, "try-error"))
+})
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$pdp$pdp_1$var),
+               c("sale_qtr", "income"))
+})
+
+nano <- try(nano::nano_pdp(nano, 2, c("crime_rate"), plot = FALSE))
+test_that("no error in calculating the same pdps", {
+  expect_false(inherits(nano, "try-error"))
+})
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$pdp$pdp_2$var),
+               c("sale_qtr", "income", "crime_rate"))
+})
+
+nano <- try(nano::nano_pdp(nano, 1:2, c("crime_rate"), plot = FALSE))
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$pdp$pdp_1$var),
+               c("sale_qtr", "income", "crime_rate"))
+})
+
+
+
+# test ice functions ----
+
+test_that("error if vars not in model", {
+  expect_that(nano::nano_ice(nano, 1:2, "sale", plot = FALSE), 
+              throws_error("`vars` must be predictors in each of the specified models."))
+})
+
+nano <- try(nano::nano_ice(nano, 1:2, c("sale_qtr", "income"), plot = FALSE))
+test_that("no error in calculating ices for multiple variables and models", {
+  expect_false(inherits(nano, "try-error"))
+})
+
+nano <- try(nano::nano_ice(nano, 1:2, c("sale_qtr", "income"), plot = FALSE))
+test_that("no error in calculating the same ices", {
+  expect_false(inherits(nano, "try-error"))
+})
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$ice$ice_1$var),
+               c("sale_qtr", "income"))
+})
+
+nano <- try(nano::nano_ice(nano, 2, c("crime_rate"), plot = FALSE))
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$ice$ice_2$var),
+               c("sale_qtr", "income", "crime_rate"))
+})
+
+nano <- try(nano::nano_ice(nano, 1:2, c("crime_rate"), plot = FALSE))
+
+test_that("variables are correct", {
+  expect_equal(unique(nano$ice$ice_1$var),
+               c("sale_qtr", "income", "crime_rate"))
+})
+
+
 h2o.removeAll()
 h2o.shutdown(prompt = FALSE)
+
 
