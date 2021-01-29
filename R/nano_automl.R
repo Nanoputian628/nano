@@ -106,13 +106,22 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
   
   ## create training and testing datasets
   # initialise testing dataset
-  if (!missing(test)) test <- NA
+  if (missing(test)) test <- NA
   
   # split data in training and testing
   train <- data.table::as.data.table(data)
   if (!is.na(train_test)) {
     train <- data[get(train_test) == "train"]
     test  <- data[get(train_test) == "test"]
+  }
+  
+  # if nfolds specified, assign folds to rows
+  if (!is.na(nfolds)) {
+    fold <- caret::createFolds(as.vector(train[[response]]), k = nfolds, 
+                               list = FALSE)
+    train[, fold := as.factor(fold)]
+    fold_column <- "fold"
+    nfolds <- NA
   }
   
   # determine variables to ignore in training models
@@ -151,9 +160,8 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
                                           params),
                                      list(validation_frame = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
                                      list(weights_column   = weight_column)[!is.null(weight_column)],
-                                     list(fold_column      = fold_column)[!is.null(fold_column)],
-                                     list(nfolds           = nfolds)[!is.na(nfolds)]))
-  
+                                     list(fold_column      = fold_column)[!is.null(fold_column)]))
+
 
   # print leaderboard
   if (nrow(aml@leaderboard) == 0) {
@@ -168,19 +176,49 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
       }
   }
   
+  
+  # recreate dataset to input into nano object
+  if (missing(train_test)) {
+    # is train_test column is not specified, create data_id column 
+    # and combine datasets together 
+    train[, data_id := "train"]
+    data <- data.table::copy(train)
+    if (data.table::is.data.table(test)) {
+      test[, data_id := "test"]
+      data <- rbind(data, test)
+    }  
+  } else {
+    if (!"data_id" %in% names(data)) {
+      # rename train_test to data_id for consistency
+      names(data)[names(data) == train_test] <- "data_id" 
+      message("Renaming ", train_test, "to data_id.")
+    }
+  }
+  
+  # rename fold_column to fold for consistency
+  if (!missing(fold_column)) {
+    if (fold_column != "fold") {
+      names(data)[names(data) == fold_column] <- "fold" 
+      message("Renaming ", fold_column, "to fold.")
+    }
+  }
+  
+  
   # add models to nano object
-  nano$n_model               <- nano$n_model + 1
-  nano$grid[[nano$n_model]]  <- nano:::create_Grid(aml)
-  nano$model[[nano$n_model]] <- h2o::h2o.getModel(as.data.frame(aml@leaderboard)$model_id[1])
-  nano$data[[nano$n_model]]  <- data.table::as.data.table(data)
-  nano$meta[[nano$n_model]]  <- nano:::model_meta(nano$model[[nano$n_model]], 
+  nano$n_model                <- nano$n_model + 1
+  nano$grid[[nano$n_model]]   <- nano:::create_Grid(aml)
+  nano$model[[nano$n_model]]  <- h2o::h2o.getModel(as.data.frame(aml@leaderboard)$model_id[1])
+  nano$metric[[nano$n_model]] <- nano:::model_metrics(nano$model[[nano$n_model]], data)
+  nano$data[[nano$n_model]]   <- data
+  nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
   
   # rename elements in nano object
-  names(nano$grid)[nano$n_model]  <- paste0("grid_" , nano$n_model)
-  names(nano$model)[nano$n_model] <- paste0("model_", nano$n_model)
-  names(nano$data)[nano$n_model]  <- paste0("data_" , nano$n_model)
-  names(nano$meta)[nano$n_model]  <- paste0("meta_" , nano$n_model)
+  names(nano$grid)[nano$n_model]   <- paste0("grid_"  , nano$n_model)
+  names(nano$model)[nano$n_model]  <- paste0("model_" , nano$n_model)
+  names(nano$metric)[nano$n_model] <- paste0("metric_", nano$n_model)
+  names(nano$data)[nano$n_model]   <- paste0("data_"  , nano$n_model)
+  names(nano$meta)[nano$n_model]   <- paste0("meta_"  , nano$n_model)
 
   # results <- h2o_results(aml, test = train, train = train, y = response, which = 1, model_type = model_type,
   #                        ignore = ignore, seed = seed, quiet = quiet)

@@ -69,6 +69,7 @@
 #' @rdname nano_constructors
 new_nano <- function(x = list(grid        = rep(list(NA)      , 10),
                               model       = rep(list(NA)      , 10),
+                              metric      = rep(list(NA)      , 10),
                               data        = rep(data.table(NA), 10),
                               varimp      = rep(list(NA)      , 10),
                               pdp         = rep(list(NA)      , 10),
@@ -179,6 +180,7 @@ validate_nano <- function(x) {
 #' @export
 create_nano <- function(grid        = rep(list(NA)      , 10),
                         model       = rep(list(NA)      , 10),
+                        metric      = rep(list(NA)      , 10),
                         data        = rep(data.table(NA), 10),
                         varimp      = rep(list(NA)      , 10),
                         pdp         = rep(list(NA)      , 10),
@@ -194,6 +196,13 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   if (n_model != 0 & !all(grepl("H2O", sapply(model, function(x) as.vector(class(x)))[1:n_model])) & !all(grepl("Model", sapply(model, function(x) as.vector(class(x)))[1:len(model)]))) {
     stop("All `model` values must be a H2O model", 
          call. = FALSE
+    )
+  }
+  
+  if (n_model != 0 & !all(lapply(data, function(x) class(x)[1])[1:len(data)] == "data.table")) {
+    stop(
+      "All `data` values must be data.table class",
+      call. = FALSE
     )
   }
   
@@ -215,7 +224,22 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   if (len(data) == 1 & len(grid) > 1) {
     data <- rep(data, len(grid))
   }
+  # create data_id column for each dataset if doesn't already exist
+  if (len(data) > 0) {
+    for (i in 1:len(data)) {
+      if (!"data_id" %in% names(data[[i]])) {
+        data[[i]][, data_id := "train"]
+      }
+    }
+  }
   
+  # calculate metrics for each 
+  if (len(model) >= 1) {
+    for (i in 1:len(model)) {
+      metric[[i]] <- nano:::model_metrics(model[[i]], data[[i]])
+    }
+  }
+
   # fill out meta for each model
   if (len(grid) >= 1) {
     for (i in 1:len(grid)) {
@@ -236,6 +260,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
     }
     grid        <- pad(grid       , "list")
     model       <- pad(model      , "list")
+    metric      <- pad(metric     , "list")
     data        <- pad(data       , "data.table")
     varimp      <- pad(varimp     , "list")
     pdp         <- pad(pdp        , "list")
@@ -252,6 +277,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   }
   grid        <- change_names(grid       , "grid_")
   model       <- change_names(model      , "model_")
+  metric      <- change_names(metric     , "metric_")
   data        <- change_names(data       , "data_")
   varimp      <- change_names(varimp     , "varimp_")
   pdp         <- change_names(pdp        , "pdp_")
@@ -265,6 +291,7 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   # create nano object
   nano:::validate_nano(list(grid        = grid, 
                             model       = model, 
+                            metric      = metric, 
                             data        = data, 
                             varimp      = varimp, 
                             pdp         = pdp, 
@@ -275,5 +302,6 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
                             )
                        )
 }
+create_nano()
 
 

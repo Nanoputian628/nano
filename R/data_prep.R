@@ -187,7 +187,22 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
     if (!quiet) {
       cat("Following variables converted from character to factor type:\n")
       for (i in 1:length(col_char)) {
-        cat(paste0(col_char[i], "\n"))
+        cat(paste0(" ", col_char[i], "\n"))
+      } 
+    }
+  }
+  
+  # convert variables with low number of unique values to factor type
+  fun <- function(x) { length(unique(x)) & !is.factor(x) }
+  if (sum(sapply(data, fun)) > 0) {
+    col_char <- names(data)[sapply(data, fun)]
+    data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
+    if (!quiet) {
+      cat(paste0("Following variables converted to factor type since has less than ", 
+                 thresh,
+                 "unique values:\n"))
+      for (i in 1:length(col_char)) {
+        cat(paste0(" ", col_char[i], "\n"))
       } 
     }
   }

@@ -31,7 +31,7 @@ test_that("thresh check", {
 ignore <- c("sale_price", "dist_to_highway")
 vif <- vif_step(data, ignore = ignore, thresh = 1.5, trace = FALSE, remove = FALSE)
 test_that("correct output for remove = FALSE", {
-  expect_equal(nrow(vif), ncol(data))
+  expect_equal(nrow(vif), ncol(data) - 1)
 })
 
 vif <- vif_step(data, ignore = ignore, thresh = 1.5, trace = TRUE, remove = TRUE)

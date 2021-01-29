@@ -7,10 +7,10 @@
 \title{Creating Nano Object}
 \usage{
 new_nano(
-  x = list(grid = rep(list(NA), 10), model = rep(list(NA), 10), data =
-    rep(data.table(NA), 10), varimp = rep(list(NA), 10), pdp = rep(list(NA), 10), ice =
-    rep(list(NA), 10), interaction = rep(list(NA), 10), meta = rep(list(NA), 10), n_model
-    = as.integer(0))
+  x = list(grid = rep(list(NA), 10), model = rep(list(NA), 10), metric = rep(list(NA),
+    10), data = rep(data.table(NA), 10), varimp = rep(list(NA), 10), pdp = rep(list(NA),
+    10), ice = rep(list(NA), 10), interaction = rep(list(NA), 10), meta = rep(list(NA),
+    10), n_model = as.integer(0))
 )
 
 validate_nano(x)
@@ -18,6 +18,7 @@ validate_nano(x)
 create_nano(
   grid = rep(list(NA), 10),
   model = rep(list(NA), 10),
+  metric = rep(list(NA), 10),
   data = rep(data.table(NA), 10),
   varimp = rep(list(NA), 10),
   pdp = rep(list(NA), 10),

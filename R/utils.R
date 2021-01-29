@@ -253,4 +253,92 @@ model_meta <- function(model, data) {
 
 
 
+# calculates metrics from h2o model. This will be input into nano object
+model_metrics <- function(model, data) {
+  model_info <- h2o:::.process_models_or_automl(model, h2o::as.h2o(data))
+
+  data_type <- unique(data$data_id)
+  # calculate performance object for each data type
+  for (type in data_type) {
+    assign(paste0(type, "_perf"), h2o::h2o.performance(model, h2o::as.h2o(data[data_id == type])))
+  }
+  
+  # assign list to hold metrics
+  metrics <- list(train_metrics   = NULL,
+                  test_metrics    = NULL,
+                  cv_metrics      = NULL,
+                  holdout_metrics = NULL)
+  # function to calculate specific metric for each 
+  metric_fun <- function(fun, metric) {
+    for (type in data_type) {
+      metrics[[paste0(type, "_metrics")]][[metric]] <- fun(get(paste0(type, "_perf"))) 
+    }
+    return(metrics)
+  }
+  
+  # calculate metrics
+  metrics <- metric_fun(h2o::h2o.r2   , "r2")
+  metrics <- metric_fun(h2o::h2o.mse  , "mse")
+  metrics <- metric_fun(h2o::h2o.rmse , "rmse")
+  metrics <- metric_fun(h2o::h2o.rmsle, "rmsle")
+  metrics <- metric_fun(h2o::h2o.mae  , "mae")
+  
+  # calculate extra metrics if binomial classification
+  if (model_info$is_classification & !model_info$is_multinomial_classification) {
+    metrics <- metric_fun(h2o::h2o.giniCoef          , "gini_coef")
+    metrics <- metric_fun(h2o::h2o.mcc               , "mcc")
+    metrics <- metric_fun(h2o::h2o.F1                , "f1")
+    metrics <- metric_fun(h2o::h2o.F0point5          , "f0point5")
+    metrics <- metric_fun(h2o::h2o.F2                , "f2")
+    metrics <- metric_fun(h2o::h2o.accuracy          , "accuracy")
+    metrics <- metric_fun(h2o::h2o.logloss           , "logloss")
+    metrics <- metric_fun(h2o::h2o.auc               , "auc")
+    metrics <- metric_fun(h2o::h2o.aucpr             , "aucpr")
+    metrics <- metric_fun(h2o::h2o.kolmogorov_smirnov, "ks")
+  }
+  
+  if ("fold" %in% names(data)) {
+    
+    # separate data into different folds
+    folds <- unique(data$fold) 
+    data_fold <- rep(list(NULL), length(folds))
+    for (i in folds) {
+      data_fold[[i]] <- h2o::as.h2o(data[fold == i])
+    }
+    
+    # functions to calculate average metric across all folds
+    metric_cv <- function(data) {
+      perf <- h2o::h2o.performance(model, data)
+      fun(perf)
+    }
+    metric_fun <- function(fun, metric) {
+      metrics$cv_metrics[[metric]] <- mean(sapply(data_fold, metric_cv))
+      return(metrics)
+    }
+    
+    
+    # calculate cv metrics
+    metrics <- metric_fun(h2o::h2o.r2   , "r2")
+    metrics <- metric_fun(h2o::h2o.mse  , "mse")
+    metrics <- metric_fun(h2o::h2o.rmse , "rmse")
+    metrics <- metric_fun(h2o::h2o.rmsle, "rmsle")
+    metrics <- metric_fun(h2o::h2o.mae  , "mae")
+    
+    # calculate extra metrics if binomial classification
+    if (model_info$is_classification & !model_info$is_multinomial_classification) {
+      metrics <- metric_fun(h2o::h2o.giniCoef          , "gini_coef")
+      metrics <- metric_fun(h2o::h2o.mcc               , "mcc")
+      metrics <- metric_fun(h2o::h2o.F1                , "f1")
+      metrics <- metric_fun(h2o::h2o.F0point5          , "f0point5")
+      metrics <- metric_fun(h2o::h2o.F2                , "f2")
+      metrics <- metric_fun(h2o::h2o.accuracy          , "accuracy")
+      metrics <- metric_fun(h2o::h2o.logloss           , "logloss")
+      metrics <- metric_fun(h2o::h2o.auc               , "auc")
+      metrics <- metric_fun(h2o::h2o.aucpr             , "aucpr")
+      metrics <- metric_fun(h2o::h2o.kolmogorov_smirnov, "ks")
+    }
+  }
+  
+  return(metrics)
+}
 

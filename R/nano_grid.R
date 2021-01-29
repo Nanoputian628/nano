@@ -130,13 +130,22 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   
   ## create training and testing datasets
   # initialise testing dataset
-  if (!missing(test)) test <- NA
+  if (missing(test)) test <- NA
   
   # split data in training and testing
   train <- data.table::as.data.table(data)
   if (!is.na(train_test)) {
     train <- data[get(train_test) == "train"]
     test  <- data[get(train_test) == "test"]
+  }
+  
+  # if nfolds specified, assign folds to rows
+  if (!is.na(nfolds)) {
+    fold <- caret::createFolds(as.vector(train[[response]]), k = nfolds, 
+                               list = FALSE)
+    train[, fold := as.factor(fold)]
+    fold_column <- "fold"
+    nfolds <- NA
   }
   
   # determine variables to ignore in training models
@@ -163,7 +172,7 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
 
   if (!quiet) 
     message(sprintf(">>> Iterating until %s models or %s seconds...", 
-                    max_models, max_time))
+                    max_models, max_runtime_secs))
   
   
   # fit models
@@ -177,9 +186,8 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
                                         seed             = seed),
                                    list(validation_frame = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
                                    list(weights_column   = weight_column)[!is.null(weight_column)],
-                                   list(fold_column      = fold_column)[!is.null(fold_column)],
-                                   list(nfolds           = nfolds)[!is.na(nfolds)],
-                                   list(hyper_params     = hyper_params)[!is.null(hyper_params)]))
+                                   list(hyper_params     = hyper_params)[!is.null(hyper_params)],
+                                   list(fold_column      = fold_column)[!is.null(fold_column)]))
   
   
 
@@ -198,22 +206,51 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
       }
   }
   
+  
+  # recreate dataset to input into nano object
+  if (missing(train_test)) {
+    # is train_test column is not specified, create data_id column 
+    # and combine datasets together 
+    train[, data_id := "train"]
+    data <- data.table::copy(train)
+    if (data.table::is.data.table(test)) {
+      test[, data_id := "test"]
+      data <- rbind(data, test)
+    }  
+  } else {
+    if (!"data_id" %in% names(data)) {
+      # rename train_test to data_id for consistency
+      names(data)[names(data) == train_test] <- "data_id" 
+    }
+  }
+  
+  # rename fold_column to fold for consistency
+  if (!missing(fold_column)) {
+    if (fold_column != "fold") {
+      names(data)[names(data) == fold_column] <- "fold" 
+      message("Renaming ", fold_column, "to fold.")
+    }
+  }
+  
+  
   # add models to nano object
-  nano$n_model               <- nano$n_model + 1
-  nano$grid[[nano$n_model]]  <- nano:::create_Grid(grid)
-  nano$model[[nano$n_model]] <- h2o::h2o.getModel(grid@model_ids[1])
-  nano$data[[nano$n_model]]  <- data.table::as.data.table(data)
-  nano$meta[[nano$n_model]]  <- nano:::model_meta(nano$model[[nano$n_model]], 
+  nano$n_model                <- nano$n_model + 1
+  nano$grid[[nano$n_model]]   <- nano:::create_Grid(grid)
+  nano$model[[nano$n_model]]  <- h2o::h2o.getModel(grid@model_ids[[1]])
+  nano$metric[[nano$n_model]] <- nano:::model_metrics(nano$model[[nano$n_model]], data)
+  nano$data[[nano$n_model]]   <- data
+  nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
   if (!is.null(hyper_params)) {
     nano$grid[[paste0("grid_", nano$n_model)]]@meta$tune_hyper_params <- hyper_params 
   } 
   
   # rename elements in nano object
-  names(nano$grid)[nano$n_model]  <- paste0("grid_" , nano$n_model)
-  names(nano$model)[nano$n_model] <- paste0("model_", nano$n_model)
-  names(nano$data)[nano$n_model]  <- paste0("data_" , nano$n_model)
-  names(nano$meta)[nano$n_model]  <- paste0("meta_" , nano$n_model)
+  names(nano$grid)[nano$n_model]   <- paste0("grid_"  , nano$n_model)
+  names(nano$model)[nano$n_model]  <- paste0("model_" , nano$n_model)
+  names(nano$metric)[nano$n_model] <- paste0("metric_", nano$n_model)
+  names(nano$data)[nano$n_model]   <- paste0("data_"  , nano$n_model)
+  names(nano$meta)[nano$n_model]   <- paste0("meta_"  , nano$n_model)
   
   return(nano)
 }  
