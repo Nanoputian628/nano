@@ -160,19 +160,29 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
     }
     if (!missing(na_bucket)) {
       if (is.list(na_bucket)) na_bucket_var <- na_bucket[[var]] else na_bucket_var <- na_bucket
+    } else {
+      na_bucket_var = NULL
     }
     if (!missing(unmatched_bucket)) {
-      if (is.list(unmatched_bucket)) unmatched_bucket_var <- unmatched_bucket[[var]] else unmatched_bucket_var <- unmatched_bucket
-    } 
+      if (is.list(unmatched_bucket)) {
+        unmatched_bucket_var <- unmatched_bucket[[var]] 
+      } else {
+        unmatched_bucket_var <- unmatched_bucket
+      } 
+    } else {
+      unmatched_bucket_var <- NULL
+    }
+    
     # if buckets is not provided, use bands as the buckets
     if (is.null(buckets)) buckets_var <- bands else buckets_var <- buckets[[var]]
     # create bands using fancycut package
-    data[, paste0(var, "_bnd") := nano:::wafflecut(data[[var]], 
-                                                  bands, 
-                                                  buckets_var, 
-                                                  na.bucket        = na_bucket_var, 
-                                                  unmatched.bucket = unmatched_bucket_var, 
-                                                  out.as.factor    = TRUE)]
+    
+    data[, paste0(var, "_bnd") := do.call(nano:::wafflecut, c(list(x = data[[var]],
+                                                                   intervals = bands,
+                                                                   buckets = buckets_var),
+                                                              list(unmatched.bucket = unmatched_bucket_var)[!is.null(unmatched_bucket_var)],
+                                                              list(na.bucket = na_bucket_var)[!is.null(na_bucket_var)]))
+    ]
   }
   return(data)
 }

@@ -128,6 +128,9 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   if (!quiet) message(paste(Sys.time(), "| Started process..."))
   
   
+  # increase nano space if required
+  nano <- nano:::nano_increase(nano)
+  
   ## create training and testing datasets
   # initialise testing dataset
   if (missing(test)) test <- NA
@@ -241,9 +244,9 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   nano$data[[nano$n_model]]   <- data
   nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
-  if (!is.null(hyper_params)) {
-    nano$grid[[paste0("grid_", nano$n_model)]]@meta$tune_hyper_params <- hyper_params 
-  } 
+  # if (!is.null(hyper_params)) {
+  #   nano$grid[[paste0("grid_", nano$n_model)]]@meta$tune_hyper_params <- hyper_params
+  # }
   
   # rename elements in nano object
   names(nano$grid)[nano$n_model]   <- paste0("grid_"  , nano$n_model)

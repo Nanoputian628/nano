@@ -193,14 +193,14 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
   }
   
   # convert variables with low number of unique values to factor type
-  fun <- function(x) { length(unique(x)) & !is.factor(x) }
+  fun <- function(x) { length(unique(x)) < thresh & !is.factor(x) }
   if (sum(sapply(data, fun)) > 0) {
     col_char <- names(data)[sapply(data, fun)]
     data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
     if (!quiet) {
       cat(paste0("Following variables converted to factor type since has less than ", 
                  thresh,
-                 "unique values:\n"))
+                 " unique values:\n"))
       for (i in 1:length(col_char)) {
         cat(paste0(" ", col_char[i], "\n"))
       } 
@@ -218,7 +218,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
 
   # summary on how clean the dataset is
   if (!quiet) {
-    message("Following numbers are based on the entire dataset.")
+    message("Following numbers are based on the entire dataset:")
   }
   clean_smry <- nano::cleanliness_smry(data = data, outlier_sd = rm_outliers, quiet = quiet)
   if (unique_row) {
@@ -236,7 +236,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
       blank_var <- names(clean_smry$blanks)[clean_smry$blanks > 0]
       cat("The following variables have blank values:\n")
       for (i in 1:length(blank_var)) {
-        cat(paste0(blank_var[i], ": ", clean_smry$blanks[i], "\n"))
+        cat(paste0(" ", blank_var[i], ": ", clean_smry$blanks[i], "\n"))
       }
     } 
     
@@ -245,7 +245,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
       na_var <- names(clean_smry$nas)[clean_smry$nas > 0]
       cat("The following variables have NAs:\n")
       for (i in 1:length(na_var)) {
-        cat(paste0(na_var[i], ": ", clean_smry$nas[i], "\n"))
+        cat(" ", paste0(na_var[i], ": ", clean_smry$nas[i], "\n"))
       }
     } 
     
@@ -254,7 +254,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
       special_var <- names(clean_smry$special_chars)[clean_smry$special_chars > 0]
       cat("The following variables have NAs:\n")
       for (i in 1:length(special_var)) {
-        cat(paste0(special_var[i], ": ", clean_smry$special_chars[i], "\n"))
+        cat(paste0(" ", special_var[i], ": ", clean_smry$special_chars[i], "\n"))
       }
     }
   }
@@ -338,7 +338,7 @@ Testing dataset: ", nrow(data_test), " rows."))
   # vif step-wise selection
   if (vif_select) {
     train_vif <- nano::vif_step(data_train, 
-                                ignore = c(vif_ignore, if (split_ratio > 1) "fold"), 
+                                ignore = c(vif_ignore, if (split_or_fold > 1) "fold"), 
                                 thresh = vif_thresh, trace = FALSE, remove = TRUE)
     
     # print variables that were removed
@@ -360,8 +360,8 @@ Testing dataset: ", nrow(data_test), " rows."))
     # add banded variables to list of ignored variables to prevent collinearity with the
     # original variables  
     band_vars <- names(data_train)[grepl("_bnd", names(data_train), fixed = TRUE)]
-    pred_ignore <- c(pred_ignore, band_vars, if (split_ratio > 1) "fold")
-    impute_ignore <- c(impute_ignore, band_vars, if (split_ratio > 1) "fold")
+    pred_ignore <- c(pred_ignore, band_vars, if (split_or_fold > 1) "fold")
+    impute_ignore <- c(impute_ignore, band_vars, if (split_or_fold > 1) "fold")
     imputation_train <- nano::impute(data_train, method = impute_method, 
                                      pred_ignore = pred_ignore, impute_ignore = impute_ignore,                                      impute_outlier = rm_outliers, seed = seed)
     data_train <- data.table::copy(imputation_train$imputed_data)

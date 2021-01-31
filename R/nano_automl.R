@@ -104,6 +104,9 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
   if (!quiet) message(paste(Sys.time(), "| Started process..."))
 
   
+  # increase nano space if required
+  nano <- nano:::nano_increase(nano)
+  
   ## create training and testing datasets
   # initialise testing dataset
   if (missing(test)) test <- NA

@@ -101,36 +101,39 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   }
   outlier_index <- lapply(data[, sapply(data, is.numeric), with = FALSE], outlier_fun)
   outlier_num <- sapply(outlier_index, length)
-  if (sum(outlier_num) != 0) {
-    outlier_var <- names(outlier_index)[outlier_num != 0]
-    outlier_row <- c()
-    for (var in outlier_var) {
-      outlier_row <- union(outlier_row, outlier_index[[var]])
+  if (length(outlier_num != 0)) {
+    if (sum(outlier_num) != 0) {
+      outlier_var <- names(outlier_index)[outlier_num != 0]
+      outlier_row <- c()
+      for (var in outlier_var) {
+        outlier_row <- union(outlier_row, outlier_index[[var]])
+      }
+      outliers <- data.table::copy(data)
+      outliers <- outliers[outlier_row]
+      outliers <- outliers[, outlier_var, with = FALSE]
+      outliers <- outliers[, index := outlier_row]
+      for (var in outlier_var) {
+        outliers[, (var) := ifelse(outliers$index %in% outlier_index[[var]], var, "")]
+      }
+      outlier_cols <- rep("", nrow(outliers))
+      for (var in outlier_var) {
+        outlier_cols <- ifelse(as.vector(outliers[[var]]) == "",
+                               outlier_cols,
+                               paste(outlier_cols, as.vector(outliers[[var]]), sep = ", "))
+      }
+      outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
+      outlier_dat <- data.table::copy(data)[outlier_row][
+        , outlier_cols := outlier_cols]
+      outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
+    } else {
+      outlier_dat <- "Dataset has no outliers!"
+      outlier_plot <- "Dataset has no outliers!"
     }
-    outliers <- copy(data)
-    outliers <- outliers[outlier_row]
-    outliers <- outliers[, outlier_var, with = FALSE]
-    outliers <- outliers[, index := outlier_row]
-    for (var in outlier_var) {
-      outliers[, (var) := ifelse(outliers$index %in% outlier_index[[var]], var, "")]
-    }
-    outlier_cols <- rep("", nrow(outliers))
-    for (var in outlier_var) {
-      outlier_cols <- ifelse(as.vector(outliers[[var]]) == "",
-                             outlier_cols,
-                             paste(outlier_cols, as.vector(outliers[[var]]), sep = ", "))
-    }
-    outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
-    outlier_dat <- copy(data)[outlier_row][
-      , outlier_cols := outlier_cols]
-    outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
-  } else {
-    outlier_dat <- "Dataset has no outliers!"
-    outlier_plot <- "Dataset has no outliers!"
+    if (!quiet) {
+      message("Dataset has ", sum(outlier_num), " outliers.")
+    }  
   }
-  if (!quiet) {
-    message("Dataset has ", sum(outlier_num), " outliers.")
-  }
+
   
   # check for special characters
   pattern <- "/|:|\\?|<|>|\\|\\\\|\\*|\\@|\\#|\\$|\\%|\\^|\\&"

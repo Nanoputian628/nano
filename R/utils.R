@@ -303,7 +303,7 @@ model_metrics <- function(model, data) {
     folds <- unique(data$fold) 
     data_fold <- rep(list(NULL), length(folds))
     for (i in folds) {
-      data_fold[[i]] <- h2o::as.h2o(data[fold == i])
+      data_fold[[i]] <- h2o::as.h2o(data[fold != i])
     }
     
     # functions to calculate average metric across all folds
@@ -340,5 +340,24 @@ model_metrics <- function(model, data) {
   }
   
   return(metrics)
+}
+
+
+
+# function to increase space of nano object if it is full
+nano_increase <- function(nano) {
+  if (sum(sapply(nano$grid, is.logical)) = 0) {
+    nano$grid        <- append(nano$grid       , rep(list(NA)      , 10))
+    nano$model       <- append(nano$model      , rep(list(NA)      , 10))
+    nano$metric      <- append(nano$metric     , rep(list(NA)      , 10))
+    nano$data        <- append(nano$data       , rep(data.table(NA), 10))
+    nano$varimp      <- append(nano$varimp     , rep(list(NA)      , 10))
+    nano$pdp         <- append(nano$pdp        , rep(list(NA)      , 10))
+    nano$ice         <- append(nano$ice        , rep(list(NA)      , 10))
+    nano$interaction <- append(nano$interaction, rep(list(NA)      , 10))
+    nano$meta        <- append(nano$meta       , rep(list(NA)      , 10))
+  }
+  
+  return(nano)
 }
 
