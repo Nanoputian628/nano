@@ -25,6 +25,9 @@
 #' however it cannot contain the values "test".  
 #' @param thresh a numeric. Cutoff of number of unique values in response variable to 
 #' determine whether performing classification or regression. Default value is 10.
+#' @param monotone_constraints a list. Mapping between variable names in `data` to values
+#' +1 or -1. Use +1 to enforce an increasing constraint while use -1 for a decreasing 
+#' constraint. Constraints are only valid for numerical columns.
 #' @param hyper_params a list. Contains model hyper-parameters for hyper-parameter tuning. The
 #' possible hyper-parameters that can be used depends on the algorithm. Look at the `H2O` 
 #' functions for the specific algorithm to see full details on the available hyper-parameters:
@@ -89,8 +92,8 @@
 nano_grid <- function (nano = nano::create_nano(), response, algo, data, test, 
                        train_test = NA, grid_id = paste0("grid_", nano$n_model + 1),
                        ignore_vars = c(), weight_column = NULL, fold_column = NULL, 
-                       nfolds = NA, thresh = 10, hyper_params = NULL, 
-                       strategy = "RandomDiscrete", max_models = 10, 
+                       nfolds = NA, thresh = 10, monotone_constraints = c(), 
+                       hyper_params = NULL, strategy = "RandomDiscrete", max_models = 10, 
                        max_runtime_secs = 60 * 10, stopping_metric = NULL,
                        stopping_tolerance = NULL, stopping_rounds = NULL, plots = TRUE, 
                        alarm = TRUE, quiet = FALSE, save = FALSE, subdir = NA,
@@ -118,6 +121,16 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   
   if (!is.na(train_test) & !all(c("train", "test") %in% data[[train_test]])) {
     stop("`train_test` column must contain the values `train` and `test`.",
+         call. = FALSE)
+  }
+  
+  if (!algo %in% c("gbm", "xgboost") & !is.null(monotone_constraints)) {
+    stop("Can only specify `monotone_constraints` for gbm and xgboost algorithmns.",
+         call. = FALSE)
+  }
+  
+  if (!all(names(monotone_constraints) %in% names(data))){
+    stop("Names of `monotone_constraints` must be variables in `data`.",
          call. = FALSE)
   }
   
@@ -181,16 +194,17 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   # fit models
   params <- list(...)
   grid <- do.call(h2o::h2o.grid, c(list(x = setdiff(names(train), c(response, ignore_vars)),
-                                        y                = response,
-                                        algorithm        = algo,
-                                        grid_id          = grid_id,
-                                        search_criteria  = search_criteria,
-                                        training_frame   = nano:::quiet(as.h2o(train)),
-                                        seed             = seed),
-                                   list(validation_frame = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
-                                   list(weights_column   = weight_column)[!is.null(weight_column)],
-                                   list(hyper_params     = hyper_params)[!is.null(hyper_params)],
-                                   list(fold_column      = fold_column)[!is.null(fold_column)]))
+                                        y                    = response,
+                                        algorithm            = algo,
+                                        grid_id              = grid_id,
+                                        search_criteria      = search_criteria,
+                                        training_frame       = nano:::quiet(as.h2o(train)),
+                                        seed                 = seed),
+                                   list(validation_frame     = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
+                                   list(weights_column       = weight_column)[!is.null(weight_column)],
+                                   list(hyper_params         = hyper_params)[!is.null(hyper_params)],
+                                   list(fold_column          = fold_column)[!is.null(fold_column)],
+                                   list(monotone_constraints = monotone_constraints)[!is.null(monotone_constraints)]))
   
   
 

@@ -346,7 +346,7 @@ model_metrics <- function(model, data) {
 
 # function to increase space of nano object if it is full
 nano_increase <- function(nano) {
-  if (sum(sapply(nano$grid, is.logical)) = 0) {
+  if (sum(sapply(nano$grid, is.logical)) == 0) {
     nano$grid        <- append(nano$grid       , rep(list(NA)      , 10))
     nano$model       <- append(nano$model      , rep(list(NA)      , 10))
     nano$metric      <- append(nano$metric     , rep(list(NA)      , 10))

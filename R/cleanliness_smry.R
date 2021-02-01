@@ -61,11 +61,11 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
     na_var <- as.vector(na_num[match(missing_var, names(na_num))])
     missing_smry <- data.table(variable   = missing_var,
                                blank_num  = blank_var,
-                               blank_perc = blank_var / nrow(data) * 100,
+                               blank_perc = round(blank_var / nrow(data) * 100, 2),
                                na_num     = na_var,
-                               na_perc    = na_var / nrow(data) * 100,
+                               na_perc    = round(na_var / nrow(data) * 100, 2),
                                total_num  = blank_var + na_var,
-                               total_perc = (blank_var + na_var)/nrow(data) * 100)
+                               total_perc = round((blank_var + na_var)/nrow(data) * 100, 2))
   } else {
     missing_smry <- "Dataset has no missing values."
   }

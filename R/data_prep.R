@@ -92,7 +92,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
                       impute_ignore = c(), rm_outliers = Inf, vif_select = FALSE, 
                       vif_ignore = c(), vif_thresh = 5, balance = FALSE, balance_class, 
                       balance_method = "under", balance_prop = 0.5, scale = FALSE, seed = 628,
-                      quiet = FALSE, thresh = 10) {
+                      quiet = FALSE, thresh = 10, retain_names = TRUE) {
   
   # set stopwatch
   nano:::tic(id = "data_prep")
@@ -179,43 +179,8 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
          call. = FALSE)
   }
   
-  # convert characters to factors
-  data.table::setDT(data)
-  if (sum(sapply(data, is.character)) > 0) {
-    col_char <- names(data)[sapply(data, is.character)]
-    data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
-    if (!quiet) {
-      cat("Following variables converted from character to factor type:\n")
-      for (i in 1:length(col_char)) {
-        cat(paste0(" ", col_char[i], "\n"))
-      } 
-    }
-  }
+  data <- nano::tidy_data(data, thresh, retain_names, response)
   
-  # convert variables with low number of unique values to factor type
-  fun <- function(x) { length(unique(x)) < thresh & !is.factor(x) }
-  if (sum(sapply(data, fun)) > 0) {
-    col_char <- names(data)[sapply(data, fun)]
-    data[, (col_char) := lapply(.SD, as.factor), .SDcols = col_char]
-    if (!quiet) {
-      cat(paste0("Following variables converted to factor type since has less than ", 
-                 thresh,
-                 " unique values:\n"))
-      for (i in 1:length(col_char)) {
-        cat(paste0(" ", col_char[i], "\n"))
-      } 
-    }
-  }
-  
-  # filter rows with blanks or NAs in response
-  tmp <- sum(is.na(data[, response, with = FALSE])) + sum(data[, response, with = FALSE] == "", na.rm = TRUE)
-  if (tmp > 0) {
-    data <- data[!is.na(get(response)) & !get(response) == ""]
-    if (!quiet) {
-      message(paste0(tmp, " rows were removed due to missing values in ", response, "."))
-    }
-  }
-
   # summary on how clean the dataset is
   if (!quiet) {
     message("Following numbers are based on the entire dataset:")
@@ -333,12 +298,14 @@ Testing dataset: ", nrow(data_test), " rows."))
         cat(paste0(var, ": ", freq_ratio, "\n"))
       }
     }
+    # adjust vif_ignore for removed variables
+    vif_ignore <- setdiff(vif_ignore, rm_var)
    }
   
   # vif step-wise selection
   if (vif_select) {
     train_vif <- nano::vif_step(data_train, 
-                                ignore = c(vif_ignore, if (split_or_fold > 1) "fold"), 
+                                ignore = vif_ignore, 
                                 thresh = vif_thresh, trace = FALSE, remove = TRUE)
     
     # print variables that were removed
@@ -352,7 +319,7 @@ Testing dataset: ", nrow(data_test), " rows."))
     
     # remove variables from datasets
     data_train <- train_vif$data
-    data_test  <- data_test[, names(data_train), with = FALSE]
+    data_test  <- data_test[, intersect(names(data_train), names(data_test)), with = FALSE]
   }
   
   # impute training dataset
@@ -362,18 +329,28 @@ Testing dataset: ", nrow(data_test), " rows."))
     band_vars <- names(data_train)[grepl("_bnd", names(data_train), fixed = TRUE)]
     pred_ignore <- c(pred_ignore, band_vars, if (split_or_fold > 1) "fold")
     impute_ignore <- c(impute_ignore, band_vars, if (split_or_fold > 1) "fold")
-    imputation_train <- nano::impute(data_train, method = impute_method, 
-                                     pred_ignore = pred_ignore, impute_ignore = impute_ignore,                                      impute_outlier = rm_outliers, seed = seed)
+    imputation_train <- nano:::quiet(nano::impute(data           = data_train   , 
+                                                  method         = impute_method, 
+                                                  pred_ignore    = pred_ignore  , 
+                                                  impute_ignore  = impute_ignore,
+                                                  impute_outlier = rm_outliers  , 
+                                                  seed           = seed)
+    )
     data_train <- data.table::copy(imputation_train$imputed_data)
     if (nrow(data_test) > 0) {
       if (impute_method == "mice") {
         # extract imputation formula
         pred_matrix <- imputation_train$imputation_smry$predictorMatrix
+        pred_matrix <- pred_matrix[, colnames(pred_matrix) %in% names(data_test)]
+        pred_matrix <- pred_matrix[rownames(pred_matrix) %in% names(data_test), ]
         meth <- imputation_train$imputation_smry$method
         # impute test dataset
-        imputation_test <- nano::impute(data_test, pred_matrix = pred_matrix, 
-                                        impute_outlier = rm_outliers, seed = seed)
-        data_test <- copy(imputation_test$imputed_data)
+        imputation_test <- nano:::quiet(nano::impute(data           = data_test  , 
+                                                     pred_matrix    = pred_matrix, 
+                                                     impute_outlier = rm_outliers, 
+                                                     seed           = seed)
+        )
+        data_test <- data.table::copy(imputation_test$imputed_data)
       } else {
         # extract impute mean/modes
         impute_values <- imputation_train$imputation_smry$imputed_value
@@ -438,7 +415,9 @@ Testing dataset: ", nrow(data_test), " rows."))
   } else if (split_or_fold == 1) {
     data <- copy(data_train)
   } else {
-    data_test[, data_id := "holdout"]
+    data_test[, data_id := "holdout"
+              ][, fold := 0
+                ][, fold := as.factor(fold)]
     data <- rbind(data_train, data_test)
   }
   

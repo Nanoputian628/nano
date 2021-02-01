@@ -31,9 +31,7 @@ impute(
 using the "mice" method.}
 
 \item{impute_outlier}{a numeric where values which are \code{impute_outlier} standard deviations
-away from the mean will be imputed. Can either be a single number or a vector of numbers for
-each column in \code{data} (including variables in \code{impute_ignore}. By default, set to \code{Inf},
-hence no outliers are imputed.}
+away from the mean will be imputed. By default, set to \code{Inf}, hence no outliers are imputed.}
 
 \item{seed}{seed for \code{set.seed}.}
 }

@@ -25,6 +25,9 @@
 #' @param max_time a numeric. Maximum amount of time spent building models.
 #' @param thresh a numeric. Cutoff of number of unique values in response variable to 
 #' determine whether performing classification or regression. Default value is 10.
+#' @param monotone_constraints a list. Mapping between variable names in `data` to values
+#' +1 or -1. Use +1 to enforce an increasing constraint while use -1 for a decreasing 
+#' constraint. Constraints are only valid for numerical columns.
 #' @param exclude_algos a vector of characters. Algorithms which should be excluding from
 #' training process.
 #' @param include_algos a vector of characters. Algorithms to be included in training process.
@@ -66,9 +69,11 @@
 #' @rdname nano_automl
 #' @export 
 
-nano_automl <- function (nano = nano::create_nano(), response, data, test, train_test = NA, ignore_vars = c(), weight_column = NULL, fold_column = NULL, nfolds = NA,  
-          max_models = 3, max_time = 10 * 60, thresh = 10,
-          exclude_algos = c("StackedEnsemble", "DeepLearning"), 
+nano_automl <- function (nano = nano::create_nano(), response, data, test, 
+                         train_test = NA, ignore_vars = c(), weight_column = NULL, 
+                         fold_column = NULL, nfolds = NA, max_models = 3, 
+                         max_time = 10 * 60, thresh = 10, monotone_constraints = NULL,
+                         exclude_algos = c("StackedEnsemble", "DeepLearning"), 
           include_algos = NULL, plots = TRUE, alarm = TRUE, quiet = FALSE, 
           save = FALSE, subdir = NA, project = "ML Project", seed = 628, ...) {
   
@@ -94,6 +99,11 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
   
   if (!is.na(train_test) & !all(c("train", "test") %in% data[[train_test]])) {
     stop("`train_test` column must contain the values `train` and `test`.",
+         call. = FALSE)
+  }
+  
+  if (!all(names(monotone_constraints) %in% names(data))){
+    stop("Names of `monotone_constraints` must be variables in `data`.",
          call. = FALSE)
   }
   
@@ -153,13 +163,14 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test, train
   # fit models
   params <- list(...)
   aml <- do.call(h2o:::h2o.automl, c(list(x = setdiff(names(train), c(response, ignore_vars)), 
-                                          y                = response, 
-                                          training_frame   = nano:::quiet(as.h2o(train)),
-                                          max_runtime_secs = max_time, 
-                                          max_models       = max_models, 
-                                          exclude_algos    = exclude_algos, 
-                                          include_algos    = include_algos, 
-                                          seed             = seed, 
+                                          y                    = response, 
+                                          training_frame       = nano:::quiet(as.h2o(train)),
+                                          max_runtime_secs     = max_time, 
+                                          max_models           = max_models, 
+                                          monotone_constraints = monotone_constraints,
+                                          exclude_algos        = exclude_algos, 
+                                          include_algos        = include_algos, 
+                                          seed                 = seed, 
                                           params),
                                      list(validation_frame = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
                                      list(weights_column   = weight_column)[!is.null(weight_column)],

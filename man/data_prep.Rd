@@ -34,7 +34,8 @@ data_prep(
   scale = FALSE,
   seed = 628,
   quiet = FALSE,
-  thresh = 10
+  thresh = 10,
+  retain_names = TRUE
 )
 }
 \arguments{

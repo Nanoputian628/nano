@@ -17,6 +17,7 @@ nano_grid(
   fold_column = NULL,
   nfolds = NA,
   thresh = 10,
+  monotone_constraints = c(),
   hyper_params = NULL,
   strategy = "RandomDiscrete",
   max_models = 10,

@@ -1,0 +1,1352 @@
+---
+title: "Nano Example - Modelling Property Prices"
+author: "Dilshan Wijesena"
+date: "01/31/2021"
+output: 
+  bookdown::pdf_document2:
+    toc: yes
+    toc_depth: '3'
+    number_sections: yes
+header-includes:
+ \usepackage{float}
+ \floatplacement{figure}{H}
+---
+
+
+```{r set up, echo = FALSE, message = FALSE, warning = FALSE, error = FALSE}
+
+pack_names <- c("nano",
+                "skimr",
+                "plotly",
+                "gridExtra",
+                "h2o",
+                "kableExtra",
+                "bookdown")
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(pack_names)
+
+response <- "sale_price"
+
+
+```
+
+
+```{r user defined functions, echo = FALSE}
+
+# plot cumulative range by decile
+plot_score_dec <- function (score, splits = 10, model_name = NA, subtitle = NA, 
+          table = FALSE, save = FALSE, subdir = NA, file_name = "viz_ncuts.png") {
+  deciles <- quantile(score, probs = seq((1/splits), 1, length = splits), names = TRUE)
+  deciles <- data.frame(range = row.names(as.data.frame(deciles)), 
+                        cuts = as.vector(signif(deciles, 6)))
+  rownames(deciles) <- NULL
+  p <- deciles %>% ggplot(aes(x = reorder(.data$range, .data$cuts), 
+                              y = .data$cuts)) + geom_col(fill = "deepskyblue", 
+                                                          colour = "transparent") + 
+    xlab("Cumulative volume") + 
+    ylab("Score") + geom_text(aes(label = round(.data$cuts, 1), 
+                                  vjust = ifelse(.data$cuts < 0.5, -0.3, 1.3)), 
+                              size = 3, colour = "black", inherit.aes = TRUE, 
+                              check_overlap = TRUE) + 
+    guides(colour = FALSE) + 
+    labs(title = "Score cuts (Deciles)") + 
+    lares::theme_lares2()
+  if (!is.na(subtitle)) 
+    p <- p + labs(subtitle = subtitle)
+  if (!is.na(model_name)) 
+    p <- p + labs(caption = model_name)
+  if (table) {
+    return(deciles)
+  }
+  else {
+    return(p)
+  }
+}
+
+
+# plots absolute error between 2 vectors for each decile
+plot_err_dec <- function (tag, score, splits = 10, title = NA, model_name = NA, 
+          save = FALSE, subdir = NA, file_name = "viz_ncuts_error.png") {
+  df <- data.frame(tag = tag, score = score) %>% mutate(real_error = .data$tag - .data$score,
+                                                        abs_error = abs(.data$real_error)) 
+  quantsfx <- function(values, splits = 10, just = 0.3) {
+    cuts <- quantile(values, probs = seq((1/splits), 1, length = splits), 
+                     names = TRUE)
+    cuts <- data.frame(deciles = names(cuts), cut = cuts)
+    thresh <- max(cuts$cut)/2
+    cuts$gg_pos <- ifelse(cuts$cut > thresh, 1 + just, -just)
+    cuts$colour <- ifelse(cuts$gg_pos < 0, "f", "m")
+    row.names(cuts) <- NULL
+    return(cuts)
+  }
+  deciles_abs <- quantsfx(df$abs_error, splits = splits, just = 0.3)
+  p_abs <- ggplot(deciles_abs, aes(x = reorder(.data$deciles, 
+                                               .data$cut), 
+                                   y = .data$cut, 
+                                   label = signif(.data$cut, 3))) + 
+    geom_col(fill = "deepskyblue", colour = "transparent") + 
+    labs(x = NULL, y = "Absolute [#]") + geom_text(aes(vjust = .data$gg_pos, 
+                                                       colour = .data$colour), 
+                                                   size = 2.7, 
+                                                   inherit.aes = TRUE, 
+                                                   check_overlap = TRUE) + 
+    labs(subtitle = paste("Cuts and distribution by absolute error")) + 
+    #scale_y_continuous(labels = "test") + 
+    guides(colour = FALSE) + 
+    lares::gg_text_customs() + 
+    lares::theme_lares2(bg_colour = "white")
+  if (!is.na(title)) 
+    p_abs <- p_abs + labs(title = title)
+  plot(p_abs)
+    dev.off()
+  return(p_abs)
+}
+
+# actual vs predicted plot
+plot_res <- function (tag, score, subtitle = NA, model_name = NA) {
+  results <- data.frame(tag = tag, score = score, dist = 0)
+  results <- results[complete.cases(results), ]
+  for (i in 1:nrow(results)) {
+    results$dist[i] <- lares::dist2d(c(results$tag[i], results$score[i]), c(0, 0), c(1, 1))
+  }
+  fit <- lm(results$score ~ results$tag)
+  labels <- paste(paste("RMSE =", signif(lares::rmse(results$tag, results$score), 4)),
+                  paste("MAE =", signif(lares::mae(results$tag, results$score), 4)), 
+                  sep = "\n")
+  p <- ggplot(results, aes(x = .data$tag, 
+                           y = .data$score, 
+                           colour = .data$dist)) + 
+    geom_point() + 
+    labs(title = "Regression Model Results", 
+         x = "Real value", 
+         y = "Predicted value",
+         colour = "Deviation") + 
+    annotate("text", x = Inf, y = -Inf, hjust = 1, vjust = -0.05, label = labels, size = 2.8) + 
+    #scale_x_continuous(labels = comma) + 
+    #scale_y_continuous(labels = comma) + 
+    #scale_colour_continuous(labels = comma) + 
+    theme(legend.position = "bottom") + 
+    guides(colour = guide_colorbar(barwidth = 0.9, barheight = 4.5)) + 
+    lares::theme_lares2()
+  intercept <- summary(fit)$coefficients[1]
+  slope <- summary(fit)$coefficients[2]
+  p <- p + geom_abline(slope = 1, intercept = 0, alpha = 0.3, 
+                       colour = "grey70", size = 0.6) + 
+    geom_abline(slope = slope, 
+                intercept = intercept, 
+                alpha = 0.5, 
+                colour = "orange", 
+                size = 0.6)
+  if (!is.na(subtitle)) 
+    p <- p + labs(subtitle = subtitle)
+  if (!is.na(model_name)) 
+    p <- p + labs(caption = model_name)
+  return(p)
+}
+
+```
+
+
+\newpage
+
+# Introduction
+The purpose of this report is to describe the procedure followed to build a Gradient Boosting Machine (GBM) model which predicts the pure premium of policyholders for automobile insurance. The pure premium was calculated using the "loss cost" method:
+$$ \text{pure premium} = \frac{\text{incurred claims}}{\text{exposure}}.$$
+This approach was preferred over the frequency-severity approach due to its simplicity and only required one model to be built, reducing potential model error. 
+
+The first section of the report will briefly outline the preparation of the data for modelling followed by a description of the modelling process. Lastly, the model's performance will be thoroughly analysed on an unseen test dataset and a variety of techniques will be implemented to help understand the model's prediction mechanism. 
+
+# Data Preparation
+
+## Read in Data and Perform Checks
+
+The raw csv dataset was imported into R and the top/bottom 5 rows were checked to ensure the data had been imported correctly. Further, the `skim` function was used to produce a brief summary for each variable (see Appendix A for output). As expected, the imported dataset had 40,621 entries and the data ranged from calendar years 2015 and 2018 (by viewing the minimum and maximum values of "year"). Further each variable; did not have any missing values, had reasonable values and did not seem to have any data entry errors/outliers.       
+
+```{r read in data, echo = FALSE, message = FALSE, error = FALSE}
+
+# load data
+data("property_prices_unclean")
+data <- data.table::copy(property_prices_unclean)
+rm(property_prices_unclean)
+
+# select 10,000 rows
+set.seed(2020)
+data <- data[sample(nrow(data), 10000)]
+
+
+# check data - see Appendix A for output
+head(data, 5) # no issues
+tail(data, 5) # no issues
+skimr::skim(data) #several variables have a few missing values and possible data entry errors
+
+```
+
+## Data Cleaning 
+
+For convenience, the dataset column names were renamed to replace "." with "_" and character variables were converted to factor types, which is a requirement of the `H2o` package when building models. An important note is that even though "region" is numeric, this variable was converted to a factor type because it is represents categorical data. Further, the response variable, "pure_premium", was calculated using the loss cost approach.   
+
+```{r data cleaning, message = FALSE, error = FALSE}
+
+# general cleaning of data
+data <- nano::tidy_data(data         = data, 
+                        thresh       = 10,
+                        retain_names = FALSE,
+                        response     = response)
+# convert back air_noise and SO2 to numeric
+data[, air_noise := as.numeric(as.character(air_noise))
+     ][, SO2 := as.numeric(as.character(SO2))
+]
+
+```
+
+
+## Pariwise Variable Correlation {#Correlation}
+
+Collinearity between variables is an important issue to identify before beginning the modelling process. The presence of collinearity introduces additional uncertainty in the model fitting process and result in higher variance models (Kuhn & Johnson 2013). Kuhn and Johnson (2013) suggest that a simple but effective method to identify collinearity is to produce a correlation plot and remove variables with a correlation below a certain threshold. While this method only identifies pairwise correlation, Kuhn and Johnson (2013) states it does result in significant improvement in model performance. 
+
+The above recommended approach was followed in this report to remove correlated variables. Figure 1 shows the pairwise correlation between all numeric variables, and pairs of variables with a correlation of 0.75 or higher were more closely investigated below.
+
+* vehicle_age and vehicle_value:
+  * It is expected vehicle_age and vehicle_value to be closely related since older cars will have a lower value. Hence only the vehicle_value variable will be used in modelling since intuitively, it is expected vehicle_value will be more closely related to pure_premium.
+* weight and length:
+  * The correlation between weight and length is particularly strong and this is again expected since longer cars will have a larger weight. Hence, the weight variable will be used in modelling and the length variable will be discarded (length was removed since preliminary modelling suggested weight to be more predictive than length). 
+* yrs_licensed and ncd_level:
+  * While generally it can be expected people who have had their licenses for longer will be in a higher NCD level, this also strongly depends on how long they have been with the insurance company. For example, a new customer who joins will be automatically placed in NCD level 1, regardless of the number of years they have had their license.\
+Hence it is not expected in reality that these two variables to be directly related to each other. The observed correlation could be due to random chance. Therefore both of these two variables will be retained.
+* claim_incurred and pure_premium:
+  * This correlation is expected since pure_premium is calculated based off claim_incurred. Further, it would not be appropriate to include claim_incurred in modelling since it is unknown at the time of policy inception. Similar reasoning applies to the exposure (this variable is also used to calculate pure_premium) and claim_count variables. 
+  
+
+```{r correlation, echo = FALSE, message = FALSE, out.width="50%", fig.align = "center", fig.cap = "Pairwise correlation plot of numeric variables in dataset to identify collinearity."}
+
+# run initial without removal to see VIF for all variables
+data_vif_init <- nano::vif_step(data   = data, 
+                                ignore = c(response), 
+                                remove = FALSE)
+
+# ignore variables with low VIF to speed up function
+low_vif <- data_vif_init$var[data_vif_init$vif < 2]
+
+data_vif <- nano::vif_step(data = data, 
+                           ignore = unique(c(response, low_vif, "crime_rate", "latitude", 
+                                             "longitude", "dist_to_rail_station")), 
+                           thresh = 5, 
+                           remove = TRUE,
+                           trace  = TRUE)
+data <- data_vif$data
+
+corrplot::corrplot(cor(data[,sapply(data, is.numeric), with = FALSE], use = "pairwise.complete.obs"), method = "circle")
+# no excessively large (in absolute terms) pair-wise correlation
+
+
+```
+
+
+## Impute Data
+
+```{r imputation, echo = FALSE, message = FALSE}
+
+# missing summary
+data_missing_smry <- nano::cleanliness_smry(data, 
+                                            ignore     = c(response),
+                                            outlier_sd = 15)
+data <- data_missing_smry$unique_rows # remove duplicates
+
+data_missing_smry$outliers 
+data_missing_smry$outlier_rows # only true outliers are in income and dist_to_tunnel
+data_missing_smry$special_chars # all belong to sale_date as expected
+
+# identify any missing patterns
+data_missing_pat <- nano::missing_pattern(data   = data,
+                                          ignore = c(response),
+                                          plot   = FALSE)
+
+# impute missing values and outliers
+data_impute <- nano::impute(data           = data, 
+                            method         = "mice",
+                            impute_ignore  = c("dist_to_park", "dist_to_sealed_road", 
+                                               "dist_to_school", "sale_date"),
+                            pred_ignore    = c(response),
+                            impute_outlier = 15)
+```
+
+
+```{r data_prep, echo = FALSE, message = FALSE}
+
+data("property_prices_unclean")
+data_ex <- data.table::copy(property_prices_unclean)
+rm(property_prices_unclean)
+
+# select 10,000 rows
+set.seed(2020)
+data_ex <- data_ex[sample(nrow(data_ex), 10000)]
+
+## all in one function
+data_process <- nano::data_prep(data          = data_ex, 
+                                response      = response,
+                                split_or_fold = 5,
+                                holdout_ratio = 0.1,
+                                unique_row    = TRUE,
+                                rm_low_var    = TRUE,
+                                freq_thresh   = 95/5,
+                                impute        = TRUE,
+                                impute_method = "mice",
+                                impute_ignore = c("dist_to_park", "dist_to_sealed_road", 
+                                                  "dist_to_school", "sale_date"),
+                                pred_ignore   = c(response),
+                                rm_outliers   = 15,
+                                vif_select    = TRUE,
+                                vif_ignore    = unique(c(response, low_vif, "crime_rate", "latitude", 
+                                                         "longitude", "dist_to_rail_station")), 
+                                vif_thresh    = 5,
+                                balance       = FALSE,
+                                scale         = FALSE)
+```
+
+
+## Creating Training and Test Dataset
+
+Lastly, the dataset was split into training and test dataset using a 80:20 split (see Appendix B). The purpose of the training dataset was to build and fine-tune the final GBM model via cross-validation. Similarly, other team members built their models based on the same training dataset. Then the test dataset was used to evaluate each team member's model performance, from which the final model was selected. 
+
+When splitting the dataset, it is important to ensure the distribution of the response variable in the training dataset has not been skewed, otherwise, this will impact the training of the model. This was confirmed by comparing the distribution of "pure_premium" between the training and test dataset in figure 2. Further, the histogram illustrates "pure_premium" is highly negatively skewed and possibly follows a Tweedie or gamma distribution, as expected.  
+
+```{r message = FALSE, error = FALSE, echo = FALSE}
+
+# set seed
+set.seed(5162359)
+
+# split data into training and test set
+split   <- createDataPartition(data$pure_premium, p = 0.8, list = FALSE) # split 80:20
+xtrain0 <- data[split, ]   
+xtest0  <- data[-split, ] 
+
+```
+
+
+
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height=3, fig.cap = "Distribution of pure_premium in training and test dataset. Left: training dataset. Right: test dataset."}
+
+# compare plots to confirm balanced data
+# remove zero values and filter dataset to better see the histogram
+p1 <- ggplot(data = xtrain0 %>% filter(pure_premium < 20000 & pure_premium > 0)) + 
+  geom_histogram(mapping = aes(x = pure_premium), fill = "royalblue") +
+  lares::theme_lares2(bg_colour = "white") # histogram of training data 
+p2 <- ggplot(data = xtest0 %>% filter(pure_premium < 20000 & pure_premium > 0)) + 
+  geom_histogram(mapping = aes(x = pure_premium), fill = "royalblue") +
+  lares::theme_lares2(bg_colour = "white") # histogram of test data
+# display plots
+grid.arrange(p1, p2, nrow = 1) # plots are very similar as expected
+
+```
+
+
+
+
+# Exploratory Data Analysis {#EDA} 
+
+Brief data exploration was performed to develop an initial expectation of the relationship between the features and the response (see Appendix C for code). These expectations are then later compared in the model checking and assessment section to ensure the final selected model produces predictions that matches our expectations. An important note is that data exploration is only performed on the training dataset to prevent data leakage.  
+
+Table 1 provides a summary of the training dataset. Interestingly, over $90\%$ of entries have a loss cost of 0. This is expected since claims are generally rare events in automobile insurance, with most policyholders not claiming within a single policy term. The large frequency of zeros may make modelling difficult and cause the model to predict too low of a pure premium. This should be carefully monitored to ensure the predicted values are reasonable.
+
+
+While the mean loss cost is only $\$129$, the highest observed loss cost is nearly $\$50,000$. This is again expected since loss costs can fluctuate largely due to a single, large insurance event (e.g. multi car crash with total damage). Despite these large, rare insurance events, it is important to ensure the model's predictions are not skewed heavily towards these large observed outliers. Rather the model should aim to predict the expected loss cost. This is discussed in more detail in section \@ref(param).
+
+```{r echo = FALSE, results='markup'}
+
+dat_smry <- data.frame(Statistic = c("Mean", "Minimum", "Maximum", "Percentage of 0s"),
+                       Value     = c(round(mean(xtrain0$pure_premium),0), 
+                                     round(min(xtrain0$pure_premium), 0),
+                                     round(max(xtrain0$pure_premium), 0), 
+                                     paste0(round(100 * sum(xtrain0$pure_premium == 0)/nrow(xtrain0), 0), "%")))
+kable(dat_smry,
+      col.names = NULL,
+      caption="Summary Statistics of Training Data") %>%
+  kable_styling(font_size = 10,bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+
+The left bar plot in figure 3 indicates younger drivers have the largest loss cost, which then decreases for middle aged drivers and then increases again for older drivers. This is an expected and well documented trend in academic research. Car accident statistics reveal younger drivers (17-25) are the highest risk age group for car crashes in Australia (Zicat, Bennett, Chekaluka & Batchelor 2018) while it has been noted older driver crashes have been steadily increasing (Thompson, Baldock & Dutschke 2018). The right bar plot in figure 3 shows that cars weighing less than 1,000 kg incur significantly higher loss costs. This agrees with our initial expectations since lighter cars would sustain more significant damage in car crashes. 
+
+```{r echo = FALSE, warning = FALSE, message=FALSE, fig.height=3.5, fig.width = 7, fig.align="center", fig.cap = "Left: Blue bars show average pure premium by driver age band and orange points show number of counts per each band. Right: Blue bars show average pure premium by weight band and orange points show number of counts per each band."}
+
+# create bands 
+xtrain0 <- xtrain0 %>% 
+  mutate(driver_age_bnd    = cut(driver_age   , breaks = c(18, 25, seq(35, 95, 10)) , include.lowest = TRUE, dig.lab = 10),
+         weight_bnd        = cut(weight       , breaks = c(seq(800, 1600, 200), Inf), include.lowest = TRUE, dig.lab = 10),
+         prior_claims_bnd  = cut(prior_claims , breaks = c(seq(0, 3, 1), Inf)       , include.lowest = TRUE, dig.lab = 10)) 
+
+
+# calculate average pure premium and number of counts by driver age
+xtrain0_driver_age <- quiet(xtrain0 %>%
+  group_by(driver_age_bnd) %>% 
+  summarise(prem_ave = mean(pure_premium), Count = n()))
+
+# calculate average pure premium and number of counts by driver age
+xtrain0_weight <- quiet(xtrain0 %>%
+  group_by(weight_bnd) %>% 
+  summarise(prem_ave = mean(pure_premium), Count = n()))
+
+# plot average pure premium per driver age
+prem_driver_age <- quiet(
+  ggplot(xtrain0_driver_age) +
+  geom_col(aes(x=driver_age_bnd, y=prem_ave), fill = "royalblue") + 
+  geom_line(aes(x=driver_age_bnd, y=0.025*Count), size = 1, color="tan1") +
+  geom_point(aes(x=driver_age_bnd, y=0.025*Count), colour = 'tan2', size = 3, shape = 18) +
+  scale_x_discrete(name="Driver Age", guide = guide_axis(check.overlap = TRUE)) +
+  scale_y_continuous(name = "Average Pure Premium", breaks=seq(0,350,50), sec.axis = sec_axis(~./0.025, name = "Count")) +
+  lares::theme_lares2(bg_colour = "white")
+  )
+
+# plot average pure premium per driver age
+prem_weight <- quiet(
+  ggplot(xtrain0_weight) +
+  geom_col(aes(x=weight_bnd, y=prem_ave), fill = "royalblue") + 
+  geom_line(aes(x=weight_bnd, y=0.04*Count), size = 1, color="tan1") +
+  geom_point(aes(x=weight_bnd, y=0.04*Count), colour = 'tan2', size = 3, shape = 18) +
+  scale_x_discrete(name="Weight of Vehicle", guide = guide_axis(check.overlap = TRUE)) +
+  scale_y_continuous(name = "Average Pure Premium", breaks=seq(0,500,100), sec.axis = sec_axis(~./0.04, name = "Count")) +
+  lares::theme_lares2(bg_colour = "white")
+  )
+
+
+grid.arrange(prem_driver_age, prem_weight, nrow = 1)
+
+```
+
+Figure 4 shows a box plot of pure premium against NCD level. As the NCD level increases, the distribution of lost costs becomes less skewed and decreases in range. This is expected since drivers in higher NCD levels have previously not made any claims and hence represent safer drivers. However, surprisingly the distribution of pure premiums for NCD level 2 is much less skewed than expected. This could be due to other factors of drivers in NCD level 2 influencing their lost costs. The produced final model should be able to identify if this is the case and this is discussed later in section \@ref(NCDPDP).
+
+
+```{r echo = FALSE, warning = FALSE, fig.align="center", out.width="50%", fig.cap = "Box plot of pure premium by NCD level."}
+
+# calculate average pure premium and number of counts by prior claims
+# data_prior <- data %>%
+#   group_by(prior_claims_bnd) %>% 
+#   summarise(prem_ave = mean(pure_premium), Count = n())
+
+# plot average pure premium per prior claims 
+# prem_prior <- ggplot(data_prior) +
+#   geom_col(aes(x=prior_claims_bnd, y=prem_ave), fill = "royalblue") + 
+#   geom_line(aes(x=prior_claims_bnd, y=0.005*Count), size = 1, color="tan1") +
+#   geom_point(aes(x=prior_claims_bnd, y=0.005*Count), colour = 'tan2', size = 3, shape = 18) +
+#   scale_x_discrete(name="Prior Claims") +
+#   scale_y_continuous(name = "Average Pure Premium", breaks=seq(0,350,50), sec.axis = sec_axis(~./0.005, name = "Count")) +
+#   theme(plot.caption = element_text(hjust = 0)) 
+
+xtrain0_plot <- xtrain0 %>% 
+  mutate(ncd_level = as.factor(ncd_level)) %>%  
+  filter(pure_premium < 30000) 
+
+# plot box plot of pure premium per ncd_level
+prem_ncd <- quiet(
+  xtrain0_plot %>% 
+  ggplot(aes(x = ncd_level, y = pure_premium, colour = ncd_level)) +
+  geom_boxplot(fill="skyblue4", show.legend = FALSE) +
+  lares::theme_lares2(bg_colour = "white") +
+  labs(x = "NCD Level ", y ="Pure Prmeium")
+  )
+
+
+#grid.arrange(prem_prior, prem_ncd, nrow = 1)
+prem_ncd
+
+```
+
+
+
+# Model Fitting 
+
+## Initial Model Parameters {#param} 
+
+The 5-fold cross-validation technique was used to evaluate the models built since it is an attractive approach for selecting from various models, especially in cases where the degrees of freedom cannot be calculated, as in tree-based models (James, Witten, Hastie & Tibshirani 2013). The average error across the 5 holdout folds was used as an estimate for the test error of the model. 
+
+The metric used to evaluate the models was the mean absolute error (MAE). This metric was chosen because the MAE is not sensitive to outliers unlike other metrics such as MSE. This is a favourable property because by the nature of insurance, there may be very large outliers in loss claims as shown in section \@(EDA). However, the purpose of actuarial models is to predict the expected loss cost of a policyholder. Hence, the model should not place excessive weight to these outliers but rather better fit the expected value. Another advantage is that the MAE is highly interpretable since the units of MAE is in the same units of the predictor. For example, a MAE of 100 means, on average, the model's predicted pure premium is 100 dollars different to the actual pure premium. 
+
+For the remainder of the report, unless specified otherwise, the MAE refers to the average MAE across the 5 cross-validation holdouts. 
+
+
+```{r initial variables for saturated model, echo = FALSE}
+
+# initial variables to be included into saturated model
+var <- c("year",
+#        "exposure",       not included since future information
+         "business_type",
+         "driver_age",
+         "driver_gender",
+         "marital_status",
+         "yrs_licensed",
+         "ncd_level",
+         "region",
+         "body_code",
+#        "vehicle_age",    not included due to collinearity with vehicle_value
+         "vehicle_value",
+         "no_seats",
+         "cubic_cent",  
+         "horse_power",
+         "weight",
+#        "length",         not included due to collinearity with weight
+         "width",
+         "height",
+         "fuel_type",
+#        "claim_count",    not included since future information
+#        "claim_incurred", not included since future information
+         "prior_claims") 
+
+```
+
+```{r fixed parameters}
+
+# fixed parameters for GBM
+mod      <- "gbm"          # model type
+res      <- "pure_premium" # response variable
+nfolds   <- 5              # number of folds for cross-validation
+metric   <- "mae"          # metric used for model fitting and model evaluation 
+learn_rt <- 0.001          # learning rate      - see section 4.3
+stop_tol <- 1e-03          # stopping tolerance - see section 4.3
+
+```
+
+
+## H2O Cluster Connection 
+
+The `H2o` package was used to build and evaluate the models in this report. `H2o` is a fast, scalable, open-source machine learning platform. A key advantage of `H2o` compared to other popular machine learning packages is that `H2o` algorithms are all multi-core enabled, allowing for parallel processing. This significantly reduces run time and provides the potential to scale model training to over million rows of data. 
+
+To leverage `H2o`'s parallel processing capabilities, a connection to a H2o cluster must be first initialised. Then all training and test dataset needs to be uploaded to the cluster in the form of a H2OFrame (see Appendix D). 
+
+```{r H2O connection, echo = FALSE, message = FALSE, warning = FALSE}
+
+# start h2o connection to cluster
+quiet(h2o.init()) 
+
+# upload datasets to cluster
+quiet(xtrain <- xtrain0 %>% 
+  as.h2o())
+quiet(xtest <- xtest0 %>% 
+  as.h2o())
+### NOTE TO MARKER: ###
+# randomly select 1000 rows from the training dataset. Partial dependency plots will be creased based on this subset dataset rather than the original dataset. This is due to computational/hardware restrictions. 
+quiet(xtrain1 <- xtrain0[sample(nrow(xtrain0), 1000), ] %>% 
+  as.h2o())
+
+```
+
+
+
+## Create GBM Function {#CreateGbm}
+
+
+```{r read models, cache = TRUE, echo = FALSE, message = FALSE, warnings = FALSE}
+
+################################################################################################
+#                                   NOTE TO MARKER                                             #
+################################################################################################
+#
+# NOTE TO MARKER: due to the long run time required to train all GBM models, the models were previously saved and then subsequently loaded to avoid refitting each time the markdown file was compiled. 
+# As result, an alternate function (recreateGbm) is required to replicate the output from the "createGbm" function which was initially use to create the models. 
+# This code chunk has been hidden from the final rmarkdown report (but evaluated) while the original code chunk with the "createGbm" function has been shown (to illustrate the original process taken to create all the models) however it has not been evaluated when compiling the markdown file
+#
+################################################################################################
+
+# function to load previously saved h2o models and recreate the output from the createGbm function
+recreateGbm <- function(mod_nam) {
+
+  model <- h2o.loadModel(paste0(dir, "R Models\\", mod_nam))
+  
+  cv_metric_smry <- model@model$cross_validation_metrics_summary
+  gbm_pred <- h2o.predict(model, newdata = xtest) %>% 
+    as_tibble()
+  
+  cv_metric <- function(metric) {model@model$cross_validation_metrics_summary$mean[rownames(data.frame(model@model$cross_validation_metrics_summary)) == metric]}
+  metric_plot <- function(metric_plot) {plot(model, timestep = "AUTO", metric = metric_plot)}
+  varimp_plot <- function(nvar) {h2o.varimp_plot(model, nvar)}  
+
+    return(list("model"          = model, 
+                "cv_metric_smry" = cv_metric_smry,
+                "cv_metric"      = cv_metric,
+                "metric_plot"    = metric_plot, 
+                "varimp_plot"    = varimp_plot, 
+                "pred"           = gbm_pred
+              )
+        )
+
+}
+
+# load in previously saved models
+mod1            <- quiet(recreateGbm("mod1_model_1"))
+mod2_hpt_1      <- quiet(recreateGbm("mod2_model_1"))
+mod2_hpt_2      <- quiet(recreateGbm("mod2_model_2"))
+mod2_hpt_3      <- quiet(recreateGbm("mod2_model_3"))
+mod2_hpt_4      <- quiet(recreateGbm("mod2_model_4"))
+mod3_gam        <- quiet(recreateGbm("mod3_gam_model_1"))
+mod3_gam_cut1   <- quiet(recreateGbm("mod3_gam_cut1_model_1"))
+mod4_gam_cut2   <- quiet(recreateGbm("mod4_gam_cut2_model_1"))
+mod5_gam_cut3   <- quiet(recreateGbm("mod5_gam_cut3_model_1"))
+mod6_gam_cut4   <- quiet(recreateGbm("mod6_gam_cut4_model_1"))
+mod7_gam_md_1   <- quiet(recreateGbm("mod7_gam_md_model_1"))
+mod7_gam_md_2   <- quiet(recreateGbm("mod7_gam_md_model_2"))
+mod7_gam_md_3   <- quiet(recreateGbm("mod7_gam_md_model_3"))
+mod7_gam_md_4   <- quiet(recreateGbm("mod7_gam_md_model_4"))
+mod7_gam_hpt_3  <- quiet(recreateGbm("mod7_gam_hpt_model_3"))
+mod7_gam_hpt_6  <- quiet(recreateGbm("mod7_gam_hpt_model_6"))
+mod7_gam_hpt_15 <- quiet(recreateGbm("mod7_gam_hpt_model_15"))
+mod7_gam_hpt_18 <- quiet(recreateGbm("mod7_gam_hpt_model_18"))
+
+
+```
+
+
+The `createGbm` function is an user-defined function which takes in a list of combination of hyper-parameters and builds a GBM model for each combination. The function outputs a list of models as well as a variety of model diagnostics and performance plots. For more details on the function and list of hyper-parameters, see Appendix E.        
+
+The learning rate used to train all GBM models was set to $0.001$. A low learning rate was used to allow the model to reach a more optimal fit (Kuhn & Johnson 2013). While this may lead to increased training time, the impact is not significant since the training dataset only had about $35,000$ rows. 
+
+To prevent overfitting, early stopping was implemented. The stopping criteria was; terminate fitting if the MAE calculated from 5-fold cross-validation did not improve by more than 0.1% after 5 rounds of training. This also significantly reduced running time and provided the confidence to be able to initially fit an excess number of trees and later reduce the number of trees until an optimal fit was obtained. 
+
+
+## Selecting Distribution: Gamma vs Tweedie
+
+In a GBM model, different distributions can be assumed for the loss function. Given the long-tail distribution of pure_premium identified in the previous sections, the "gamma" and "Tweedie" distribution are the two commonly accepted distributions used in practice. The use of the Tweedie distribution introduces a further additional parameter, called "tweedie_power" ($p$), which take on values $1 < p < 2$. In fact, $p = 2$ corresponds to the gamma distribution.    
+
+To determine which distribution to select, a saturated GBM model for each distribution was built using all variables available in the dataset to build the model. Only the variables mentioned in section \@ref(Correlation) were not included in the initial saturated model. Enough trees were initially used (10,000 trees) to ensure the training error stabilised and terminated due to early stopping. For the gamma distribution, a single saturated model was built and fitting process terminated after 3,500 trees. For the Tweedie distribution, a grid of four saturated models were built by tuning the tweedie_power. For each model, the fitting process terminates after about 3,300 trees. See Appendix F.1 for the plots of MAE vs number of trees.  
+
+
+```{r message = FALSE, warning = FALSE, eval = FALSE}
+
+# set initial parameters - this will be tuned at the end 
+hyper_params0 = list(min_rows = 10, 
+                     max_depth = 4, 
+                     sample_rate = 0.9, 
+                     col_sample_rate = 0.8
+                     )
+# initially build 10,000 trees to ensure MAE stabilisers or fitting terminates 
+mod1 <- createGbm(mod          = mod,
+                  var          = var, 
+                  grid_id      = "mod1", 
+                  hyper_params = hyper_params0, 
+                  dist         = "gamma", 
+                  nTrees       = 10000
+                  ) 
+# fit model with Tweedie distribution with 10,000 trees
+# do Cartesian grid search over tweedie_power to see which provides best fit 
+hyper_params2_twed <- hyper_params0
+hyper_params2_twed[["tweedie_power"]] <- seq(1.2, 1.8, 0.2)
+mod2 <- createGbm(mod          = mod,
+                  var          = var, 
+                  grid_id      = "mod2", 
+                  hyper_params = hyper_params2_twed, 
+                  dist         = "Tweedie", 
+                  nTrees       = 10000
+                  ) 
+```
+
+
+```{r echo = FALSE, results='markup'}
+
+twed_smry <- data.frame(tweedie_power = seq(1.2, 2, .2),
+                        MAE = c(mod2_hpt_1$cv_metric("mae"), mod2_hpt_2$cv_metric("mae"), mod2_hpt_3$cv_metric("mae"), mod2_hpt_4$cv_metric("mae"), mod1$cv_metric("mae")))
+twed_smry$MAE <- round(as.numeric(twed_smry$MAE), 0)
+kable(t(twed_smry),
+#      table.attr = "style='width:35%;'",
+      caption="MAE of Saturated Models") %>%
+  kable_styling(font_size = 10,bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+
+From Table 2, the MAE steadily decreases as the tweedie_power increases to 2, thus the gamma model has the lowest MAE out of all models. This suggests the gamma distribution provides a better fit than any of the Tweedie distributions. The actual vs predicted plots for the gamma and Tweedie (1.8) are similar and no preference can be made based on the plots (see Appendix F.2).
+
+The partial dependency plots (PDP) for each variables for the gamma and Tweedie (1.8) models are mostly similar. However, the PDP for "driver_age" (figure 5) reveals the two models behave noticeably different for younger ages. Both models predict a similar relationship as shown in figure 3, however the Tweedie (1.8) model penalises younger drivers much more severely. This is not preferable since younger people should not be charged excessively high prices compared to older drivers (even if this may be the actuarially fair premium). This is because firstly, from a business perspective, premiums should not change dramatically with small changes in age. As well, it can be argued from an ethical perspective that this will make premiums unaffordable for young drivers and also decrease competitiveness. 
+
+Therefore the gamma distribution was selected over the Tweedie distribution since it provides a better fit and provides a smoother and more reasonable premium change as "driver_age" varies. 
+
+
+```{r cache = TRUE, echo = FALSE, message = FALSE, warning = FALSE, fig.height=3, fig.width=6, fig.cap = "Partial dependency plot of driver_age for saturated models. Green line: gamma model. Red line: Tweedie (1.8) model."}
+
+gam_twed_pdp <- quiet(pdp_multi_plot(list(mod1$model, mod2_hpt_4$model), xtrain1, "driver_age"))
+gam_twed_pdp$pdp$plots$driver_age # driver_age pdp - suggests Tweedie is more sensitive/volatile to younger ages. 
+
+```
+
+
+The saturated GBM model was trained again with the gamma distribution, using only 3,500 trees. Only 3,500 trees were used since the plots in Appendix F.1 show the fitting process terminates after 3,500 trees. Hence all models in subsequent sections of this report will only be trained with 3,500 trees. The "mod3_gam" model will serve as what Kuhn and Johnson (pg. 79, 2013) describes as the "performance ceiling", and subsequent sections will aim to produce the simplest model that reasonably approximates this performance.  
+
+```{r eval = FALSE}
+# refit gamma model with only 3,500 trees. Serve as benchmark for subsequent models.
+mod3_gam <- createGbm(mod          = mod,
+                      var          = var, 
+                      grid_id      = "mod3_gam", 
+                      hyper_params = hyper_params0, 
+                      dist         = "gamma", 
+                      nTrees       = 3500
+                      ) 
+```
+
+```{r}
+mod3_gam$cv_metric("mae")
+```
+
+
+## Backward Selection
+
+Variable selection was performed by applying manual backward selection to "mod3_gam". Specifically, the least important variables (as determined by the `h2o.varimp` function) was removed and the MAE of the reduced model was compared to the saturated "mod3_gam" model. The final model was selected based on a variation of the one-standard-error rule proposed by James et al. (2013), where the simplest model (least variables) which was within $5\%$ of the lowest MAE was selected. This variation was made since it is difficult to calculate the standard error of the predictions of a GBM. See Appendix G for code.   
+
+Based on the results from Table 3, the third reduced model, "mod5_gam_cut3", was selected. It was trained on less than half the variables compared to the full model (8 vs 19) with only an increase in MAE by 4 i.e. on average, its predictions are only $\$ 4$ worse compared to the full model. This is favourable because this will significantly reduce the training time, as well, a simpler model will reduce the risk of overfitting on unseen data.      
+
+```{r echo = FALSE, results='markup'}
+
+gam_smry <- data.frame(Number_Cut_Vars = c(0, 5, 8, 11, 13),
+                       MAE = c(mod3_gam$cv_metric("mae"), mod3_gam_cut1$cv_metric("mae"), mod4_gam_cut2$cv_metric("mae"), mod5_gam_cut3$cv_metric("mae"), mod6_gam_cut4$cv_metric("mae")))
+gam_smry$MAE <- round(as.numeric(gam_smry$MAE), 0)
+kable(t(gam_smry),
+#      table.attr = "style='width:35%;'",
+      caption="MAE of Cut Gamma Models") %>%
+  kable_styling(font_size = 10, bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+
+## Hyper-parameter Tuning {#hpt}
+
+Four hyper-parameters were selected to be tuned. They were:
+
+* min_rows        - minimum number of rows per node.
+* max_depth       - maximum depth of each tree
+* sample_rate     - percentage of rows sampled for each tree
+* col_sample_rate - percentage of columns sampled for each split
+
+The reason for specifically selecting these four hyper-parameters to tune was because the model's fitting process is highly dependent on the values of these four hyper-parameters. Choosing inappropriate values can result in over-fitting or under-fitting of the model, hence it is important to consider several different combinations of the above hyper-parameters before selecting the final model (James et al. 2013). 
+
+The "learning_rate" hyper-parameter was chosen not to be included in the tuning since as mentioned in section \@ref(CreateGbm), a conservatively small value was already chosen and increasing its value will not improve the model fit. Further, the "ntrees" hyper-parameter was chosen not to be included in the tuning since the model was already fitted with an excess number of trees and early stopping was implemented to avoid overfitting of the model (see section \@ref(CreateGbm) for more details).
+
+The hyper-parameter tuning was done in two steps. First, a Cartesian grid search was performed only on the max_depth hyper-parameter, ranging from 1 to 4. This was done since the model fitting process is particularly sensitive to the maximum depth of each tree. Building trees to deep can increase the fitting run time and can lead to overfitting, while building too shallow trees can cause the model to fail to capture interactions between variables. Further, it would be too computationally intensive to build models for all combinations of the four hyper-parameters.
+
+
+```{r hyper-parameter tuning, eval = FALSE}
+
+# hyper-parameter tuning of max_depth in selected model
+hyper_params_md = list(min_rows        = 10, 
+                       max_depth       = 1:4, 
+                       sample_rate     = 0.9, 
+                       col_sample_rate = 0.8
+                       )
+mod7_gam_md <- createGbm(mod          = mod,
+                         var          = var_cut3, 
+                         grid_id      = "mod7_gam_md", 
+                         hyper_params = hyper_params_md, 
+                         dist         = "gamma", 
+                         nTrees       = 3500
+                         )
+```
+
+
+```{r echo = FALSE, results='markup'}
+
+md_smry <- data.frame(Max_Depth = 1:4,
+                      MAE = c(mod7_gam_md_2$cv_metric("mae"), mod7_gam_md_4$cv_metric("mae"), mod7_gam_md_1$cv_metric("mae"), mod7_gam_md_3$cv_metric("mae")))
+md_smry$MAE <- round(as.numeric(md_smry$MAE), 0)
+kable(t(md_smry),
+#      table.attr = "style='width:35%;'",
+      caption="MAE of Model with Different Max Depth") %>%
+  kable_styling(font_size = 10, bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+Table 4 shows the optimum fit is achieved when max_depth = 4. Next, a search grid for the other three hyper-parameters were created, fixing max_depth = 4, and a random grid search was performed. A random search was implemented due to the large number of possible combinations and generally, the MAE converges after 20-30 models are built.   
+
+Table 5 compares the MAE of the best tuned model against the original cut model and the saturated model. As it can be seen, the tuned model performs very similarly to the saturated model - on average, predictions are only $\$1$ worse.    
+
+
+```{r hyper-parameter tuning final, eval = FALSE}
+
+# hyper-parameter tuning of selected model
+hyper_params = list(min_rows        = seq(4, 20, 2), 
+                    max_depth       = 4, 
+                    sample_rate     = seq(0.5, 0.8, 0.1), 
+                    col_sample_rate = seq(0.5, 0.5, 0.1))
+search_criteria = list(strategy = "RandomDiscrete",
+                       max_runtime_secs   = 7200,     # terminate after 2 hours
+                       max_models         = 50,       # terminate if 50 models are trained
+                       stopping_rounds    = 5,     
+                       stopping_metric    = metric,
+                       stopping_tolerance = stop_tol, # early stopping for models
+                       seed               = 2020)
+mod7_gam_hpt <- createGbm(mod            = mod,
+                          var            = var_cut3, 
+                          grid_id        = "mod7_gam_hpt", 
+                          hyper_params   = hyper_params, 
+                          searchCriteria = search_criteria, 
+                          dist           = "gamma", 
+                          nTrees         = 3500)
+```
+
+```{r echo = FALSE, results='markup'}
+
+hpt_smry <- data.frame(Model = c("Full Gamma Model", "Cut 11 Gamma Model", "Best Tuned Gamma Model"),
+                      MAE = c(mod3_gam$cv_metric("mae"), mod5_gam_cut3$cv_metric("mae"), mod7_gam_hpt_6$cv_metric("mae")))
+hpt_smry$MAE <- round(as.numeric(hpt_smry$MAE), 0)
+kable(hpt_smry,
+#      table.attr = "style='width:30%;'",
+      caption="Summary of Models") %>%
+  kable_styling(font_size = 10, bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+
+## Model Checking and Selection {#PDP}
+
+The top three models (model_6, model_15, model_18) produced from the final hyper-parameter tuning produced very similar performance metrics, hence they were further analysed together to select the model which best aligned with our expectations.
+
+The actual vs predicted plots of all three models are very similar (see Appendix H). They all have similarly distributed outliers, mostly within an absolute error of $\$ 400$. Hence, no model is preferred over the other based on the these plots.
+
+The PDPs for each variable were compared across the three models to assess if the models capture the same relationships according to our expectations (see section \@ref(EDA) for more details). The PDP for "driver_age" (figure 6) shows each model penalises younger drivers the most and older drivers to some extent as well. However, interestingly, model_6 appears to predict a lower pure premium for younger drivers aged 18-22 (keeping all else constant). This contradicts the expectation and the well-established research that younger drivers are riskier, and hence should be charged higher pure premiums. Therefore, it appears model_3 and model_15 are more appropriate than model_6 since these two models better match our expectations from section \@ref(EDA).
+
+
+```{r cache = TRUE, warning = FALSE, message = FALSE, echo = FALSE}
+
+pdp_fin <- quiet(pdp_multi_plot(list(mod7_gam_hpt_3$model, 
+                                     mod7_gam_hpt_6$model, 
+                                     mod7_gam_hpt_15$model),
+                                xtrain1,
+                                c("driver_age", "weight")
+                               )
+                )
+```
+
+
+```{r cache = TRUE, echo = FALSE, fig.height=3, fig.width=8, fig.cap = "Partial dependency plots of top three tuned models for driver_age."}
+
+pdp_fin$pdp$plots$driver_age
+
+```
+
+The PDP for "weight" (figure 7) shows a similar trend across each model. Generally, the predicted pure premium decreases as weight increases (keeping all else constant). This agrees with our initial expectations drawn from figure 3 in section \@ref(EDA). However, model_15 significantly penalises cars with weight less than 1,100 kg. Even though this may be the actuarially fair premium, from a business perspective, it is not appropriate to charge excessively higher prices for a particular segment of classes. As well, it is not desirable for the predicted pure premium to increase significantly with small changes in values of the predictors (reducing weight from 1,100 kg to 1,000 kg leads to a $\sim 40\%$ increase in the mean response). 
+
+The PDPs for all other variables are nearly identical across all other models. Therefore, model_3 was selected as the final fitted model.   
+
+
+
+```{r cache = TRUE, echo = FALSE, fig.height=3, fig.width=8, fig.cap = "Partial dependency plots of top three tuned models for weight."}
+
+pdp_fin$pdp$plots$weight
+
+```
+
+
+
+
+# Model Performance Assessment
+
+## Summary Statistics on Predictions based on Unseen Test Dataset
+
+The final selected model performance was assessed by predicting on the unseen test dataset. Summary of the results are shown in table 6. The model performed similarly on the unseen data compared to the training data, with the MAE only increasing slightly from $208$ to $210$. In fact, the RMSE significantly reduced from $986$ to only $908$. The large decrease in RMSE, yet relatively constant MAE, perhaps indicates lower frequency of outliers in the unseen dataset since the RMSE is more sensitive to outliers. The test RMSLE and residual deviance is comparable with the training dataset.        
+
+```{r test performance, echo = FALSE}
+
+mod_fin <- mod7_gam_hpt_3
+fin_perf <- h2o.performance(mod_fin$model, newdata = xtest)
+
+```
+
+```{r echo = FALSE, results='markup'}
+
+# metrics on training and test dataset
+mod_fin_metric <- data.frame(Metric = c("RMSE", "MAE", "RMSLE", "Deviance"),
+                             Train = c(mod_fin$cv_metric("rmse"), mod_fin$cv_metric("mae"), mod_fin$cv_metric("rmsle"), mod_fin$cv_metric("residual_deviance")),
+                             Test = c(fin_perf@metrics$RMSE, fin_perf@metrics$mae, fin_perf@metrics$rmsle, fin_perf@metrics$mean_residual_deviance))
+mod_fin_metric$Train <- round(as.numeric(mod_fin_metric$Train), 0)
+mod_fin_metric$Test <- round(as.numeric(mod_fin_metric$Test), 0)
+kable(mod_fin_metric,
+#      table.attr = "style='width:35%;'",
+      caption="Summary Metrics of Final Model") %>%
+  kable_styling(font_size = 10,bootstrap_options ="condensed", latex_options = "HOLD_position")
+```
+
+
+
+## Analysis of Predictions on Test Dataset
+
+First, the distribution of predictions were analysed to ensure they were reasonable and met our expectations. The left plot in figure 8 shows the density distribution of the model's predictions. It can be seen that all the predictions are non-negative as required. Further, the predictions follow a reasonable long-tail distribution. A majority of the predictions are less than $\$200$ and there are no excessive outliers.
+
+The right plot of figure 8 shows the deciles of the predicted pure premiums. The predicted premiums from the model gradually increases for the first nine deciles which is expected since about $90\%$ of the entries have 0 loss cost. The last decile of the predicted values are significantly higher as expected. These represent the more extreme risks, which should be charged a higher premium.   
+
+
+```{r echo = FALSE, message = FALSE, fig.height = 3.5, fig.width = 6, fig.align = "center", fig.cap = "Left: Histogram and density of final model's predictions on unseen test dataset. Vertical line is mean prediction. Right: Deciles of predicted pure premium on test dataset."}
+
+# histogram of final predictions
+hist_pred <- ggplot(mod_fin$pred, aes(x=predict)) +
+  geom_histogram(aes(y=..density..), 
+                 position="identity", 
+                 alpha=0.6, 
+                 fill = "deepskyblue") +
+  geom_density(adjust = 2, 
+               alpha=0.4, 
+               fill = "deepskyblue", 
+               color = "darkblue") +
+  geom_vline(aes(xintercept=mean(mod_fin$pred$predict)),
+             linetype="dashed", 
+             color = "darkblue") +
+  labs(x = "Predicted Pure Premium", y = "Density")+
+  lares::theme_lares2(bg_colour = "white")
+
+# percentile plot of predictions
+perc_pred <- plot_score_dec(mod_fin$pred$predict)
+
+grid.arrange(hist_pred, perc_pred, nrow = 1)
+
+```
+
+
+
+The actual vs predicted plot (left plot of figure 9) compares the predicted values against the actual values in the test dataset. It can be seen for a significant number of entries, the predicted value has overestimated the actual observed loss cost. However, this is expected since over $90\%$ of the data has a loss cost of 0. Importantly, the purpose of an actuarial model is to predict the expected loss cost. Just because a particular policyholder has 0 loss cost in one policy period, it does not mean their expected loss cost will be 0 since they may claim in the future. In particular for motor insurance, claims are rare events and even for riskier policies, for a particular policy period, it can be expected no claims will be made (however this does not mean the expected value is 0). Hence it would be inappropriate to design a model which predicts a 0 pure premium for $90\%$ of policyholders, nor would it make business sense to charge a customer $\$0$ for their premium. Thus, from an actuarial and business perspective, the residuals of the final model are appropriate. 
+
+```{r echo = FALSE}
+
+# extract outlier in test dataset
+outlier <- data.frame(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)])
+# create actual vs predicted plot
+p1 <- plot_res(xtest0$pure_premium, mod_fin$pred$predict)
+p2 <- p1 +
+  geom_point(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)], colour = "red") + # adds outlier in red
+  geom_text(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)], label = "outlier", hjust = 1.5, colour = "red") # label outlier
+# plot of absolute error by deciles
+p3 <- plot_err_dec(xtest0$pure_premium, mod_fin$pred$predict)
+
+```
+
+```{r echo = FALSE, fig.height=3, fig.width=8, fig.align = "center", fig.cap = "Actual vs predicted plot of final model on test dataset."}
+#grid.arrange(p2, p3, nrow = 1)
+# grid.arrange doesn't work for p2 and p3 for some reason, so had to individually plot these 2 graphs
+grid.arrange(p2, p3, nrow = 1)
+```
+
+The right plot of figure 9 confirms the residuals are not excessively high and are within reasonable bounds. Over $90\%$ of entries have a absolute residual of less than $\$250$. The large absolute error for the $100$th percentile is due to a single outlier, which is labelled on actual vs predicted plot. While the model greatly underestimates the pure premium for this entry, this is not a major concern because by nature, insurance involves uncertain events. Hence, it can be expected the claims cost for a policyholder in a particular policy term to fluctuate greatly due to rare, but significant insurance events. This is confirmed by how the claims cost for this entry is more than double the claims cost of any other entry. As discussed in the preceding paragraph, actuarial models aim to predict the expected loss cost, hence a single large outlier is not a major concern.    
+
+
+
+## Variable Importance
+
+Figure 10 ranks the relative importance of each variable in the final model. It helps provide interpretability to the GBM model by identifying which variables were the most significant in determining the model's predictions. It can be seen in the plot, that "region" is the most important variable. This agrees with our initial expectations since the location in which a vehicle is parked can have a significant impact on the likelihood of incurring any damages. For example, a vehicle parked on the street is much more likely to become damaged (via natural weather events, accidental damage, vandalism) compared to a vehicle which is securely parked in a garage. 
+
+However, it is important to note, variable importance plots tend to favour variables with greater number of unique values. The variable "region" has 34 unique values, which is significantly more than any other variable. Hence, it is important to interpret the seemingly large disparity in importance compared to other variables with caution.    
+
+It is interesting to note that the least important variable is "prior_claims". Intuitively, it would be expected that policyholders who have previously lodged more claims would represent higher risks, and hence would be a strong predictor for future claims cost. However, it can be argued this impact is captured by the "ncd_level" variable which is identified to be the second most important variable by the model. Nevertheless, it is recommended policyholders with large number of previous claims to be carefully monitored, and their actual claims cost to be compared with the predictions produced by the model. If it appears the model is consistently underestimating the true claims cost, it is suggested to re-train the model, or place an additional loading on such policyholders.   
+
+```{r, echo = FALSE, out.width = "50%", fig.align  = "center", fig.cap = "Variable importance plot of final selected model. Importance of most significant variable is scaled to 1."}
+mod_fin$varimp_plot(8)
+```
+
+## Partial Depdency Plots (PDP) {#NCDPDP}
+
+The key PDPs for the final model has already been discussed in section \@ref(PDP). However, the PDP "ncd_level" was additionally analysed to compare with figure 4 and our expectations discussed in section \@ref(EDA). The PDP in figure 11 shows a relatively smooth decrease in the mean response as NCD level increases. This matches with our expectation since drivers in higher NCD levels represent safer drivers and hence should have a lower expected loss cost. This can give us confidence that the final model correctly captures real-life relationships. 
+
+```{r echo = FALSE, warning = FALSE, message = FALSE, out.width="50%", fig.align = "center", fig.cap = "Partial dependency plot of NCD level for final model."}
+ncd_pdp <- quiet(pdp_multi_plot(list(mod_fin$model, mod_fin$model), 
+                                newdata = xtrain1, 
+                                include_vars = "ncd_level")
+                 )
+ncd_pdp$pdp$plots$ncd_level
+```
+
+
+
+## Interaction Plots {#interaction}
+
+One of the main advantages of GBM models is it is easily able to capture interactions between variables. The "max_depth" parameter was set to 4, hence up to third order interactions are able to be identified by the model. Using the `IML` package, it is possible to quantify the level of pairwise (first order) interaction between each variable captured by the GBM model. This is illustrated in figure 12. 
+
+The main purpose of these plots was to help identify key interactions in the dataset so that team members performing the GLM modelling were able to manually include these interactions in their models. 
+
+```{r echo = FALSE,, fig.height=2.5, fig.widtht=5, fig.align = "center", fig.cap = "Plot of pairwise interaction between variables captured by the final mode. Left: All pairwise combinations with year variable. Right: All pairwise combinations with region variable."}
+
+## NOTE TO MARKER: these plots take about 20 minutes each to produce. Hence, the plots were saved and loaded in rather than having to reproduced them each time the markdown file was compiled. Please see Appendix I to view the original code used to produce the interaction plots. 
+
+interaction_region <- quiet(readRDS(paste0(dir, "R Models\\region.rds")))
+interaction_year <- quiet(readRDS(paste0(dir, "R Models\\year.rds")))
+grid.arrange(interaction_year, interaction_region, nrow = 1)
+
+```
+
+
+# Model Considerations
+## Advantages
+GBMs are rapidly growing in popularity in machine learning due to their wide range of advantages compared to traditional linear models and GLMs.
+
+GBMs have strong predictive power which is superior to most models. Further, the fitting process is robust against multi-collinearity unlike linear models and GLMs. This allows for more accurate and competitive premium pricing and better identification of different risk classes. 
+
+Another important advantage of GBMs is their ability to easily identify deep interactions between variables. This is essential because in real-life data, especially in insurance data, the relationships between the features and the response variable are inherently complicated and cannot be adequately modelled by a linear trend. This is supported by the interaction plots produced in section \@ref(interaction) which demonstrates the significant interactions the GBM model identifies in the data. 
+
+An unique feature of GBMs compared to linear models and GLMs is hyper-parameter tuning. GBMs have a variety of different hyper-parameters which determine how fast the model trains and its complexity. By carefully fine-tuning the hyper-parameters, issues of over-fitting and under-fitting can be controlled to produce an optimal fit. This is seen in section \@ref(hpt) where hyper-parameter tuning led to a reduction in the cross-validation MAE and produced a robust model which performed well on the unseen test dataset. 
+
+
+## Disadvantages
+A common criticism of GBM models is their lack of interpretability. Given the produced model has 3,500 trees, it is not possible to visualise the GBM model and form a clear understanding of how predictions are exactly produced. From a business perspective, it is important to understand how models produce their predictions because it is important customers are not unfairly discriminated against. As well, it allows for greater transparency to key stakeholders. However, there is a variety of methods which are available to help better understand GBM models, which have been covered in this report (e.g. PDPs, variable importance plots, interaction plots).
+
+Another disadvantage of GBM models is the large computational power required to fit models, especially when performing hyper-parameter tuning. Given the limited resources available, compromises of model accuracy had to be made to ensure the code run time was not excessive (e.g. early stopping, random grid search for hyper-parameter tuning). The dataset used to train the model was relatively small ($\sim 32,000$ rows) and even then, run time and memory issues were encountered. In reality, insurance datasets can have up to millions of rows, hence fitting GBM models on such datasets can place a large strain on computing resources. However, it should be noted, insurance companies have access to much higher levels of computing power than I had access to. Hence, it is anticipated, issues of run time will be less of a concern when performing the modelling in practice. 
+
+\newpage 
+
+# References
+
+James, G., Witten, D., Hastie, T. & Tibshirani, R. 2013, 'An Introduction to Statistical Learning', vol. 112, New York: Springer
+
+Kuhn, M. & Johnson, K. 2013, 'Applied Predictive Modelling Springer', New York Heidelberg Dordrecht London
+
+Thompson, J.P., Baldock, M.R. & Dutschke, J.K. 2018, 'Trends in the crash involvement of older drivers in Australia', Accident Analysis & Prevention, vol. 117, pp. 262-269
+
+Zicat, E., Bennett, J.M., Chekaluk, E. & Batchelor, J. 2018, 'Cognitive function and young drivers: The relationship between driving, attitudes, personality and cognition', Transportation research part F: traffic psychology and behaviour, vol. 55, pp. 341-352
+
+\newpage
+
+# (APPENDIX) Appendix {-}
+
+# Appendix: Summary of Dataset and Individual Variables
+
+```{r message = FALSE, error = FALSE}
+
+# check data
+head(data, 5) # no issues
+tail(data, 5) # no issues
+#skim(data) # unfortunately skim function is not compatible with compiling in PDF. 
+# It is only able to compile in HTML. Hence, the glimpse function will be used instead
+# for the purpose of showing a summary of the dataset.
+glimpse(data)
+```
+
+
+
+# Appendix: Subset Dataset in Training and Test Dataset
+
+```{r message = FALSE, error = FALSE, eval = FALSE}
+
+# set seed
+set.seed(5162359)
+
+# split data into training and test set
+split   <- createDataPartition(data$pure_premium, p = 0.8, list = FALSE) # split 80:20
+xtrain0 <- data[split, ]   
+xtest0  <- data[-split, ] 
+
+# check dimensions to ensure 80:20 split
+dim(xtrain0) 
+dim(xtest0)  
+
+```
+
+# Appendix: Exploratory Data Analysis 
+
+```{r eval = FALSE, warning = FALSE, fig.align="center", fig.cap = "Left: Blue bars show average pure premium by driver age band and orange points show number of counts per each band. Right: Blue bars show average pure premium by weight band and orange points show number of counts per each band."}
+
+# create bands 
+data <- data %>% 
+  mutate(driver_age_bnd    = cut(driver_age   , 
+                                 breaks = c(18, 25, seq(35, 95, 10)) , 
+                                 include.lowest = TRUE, 
+                                 dig.lab = 10),
+         weight_bnd        = cut(weight       , 
+                                 breaks = c(seq(800, 1600, 200), Inf), 
+                                 include.lowest = TRUE, 
+                                 dig.lab = 10),
+         prior_claims_bnd  = cut(prior_claims , 
+                                 breaks = c(seq(0, 3, 1), Inf)       , 
+                                 include.lowest = TRUE, 
+                                 dig.lab = 10)) 
+
+# calculate average pure premium and number of counts by driver age
+data_driver_age <- data %>%
+  group_by(driver_age_bnd) %>% 
+  summarise(prem_ave = mean(pure_premium), Count = n())
+
+# calculate average pure premium and number of counts by driver age
+data_weight <- data %>%
+  group_by(weight_bnd) %>% 
+  summarise(prem_ave = mean(pure_premium), Count = n())
+
+# plot average pure premium per driver age
+prem_driver_age <- ggplot(data_driver_age) +
+  geom_col(aes(x=driver_age_bnd, y=prem_ave), fill = "royalblue") + 
+  geom_line(aes(x=driver_age_bnd, y=0.025*Count), size = 1, color="tan1") +
+  geom_point(aes(x=driver_age_bnd, y=0.025*Count), colour = 'tan2', size = 3, shape = 18) +
+  scale_x_discrete(name="Driver Age") +
+  scale_y_continuous(name = "Average Pure Premium", 
+                     breaks=seq(0,350,50), 
+                     sec.axis = sec_axis(~./0.025, name = "Count")) +
+  theme(plot.caption = element_text(hjust = 0))
+
+# plot average pure premium per driver age
+prem_weight <- ggplot(data_weight) +
+  geom_col(aes(x=weight_bnd, y=prem_ave), fill = "royalblue") + 
+  geom_line(aes(x=weight_bnd, y=0.04*Count), size = 1, color="tan1") +
+  geom_point(aes(x=weight_bnd, y=0.04*Count), colour = 'tan2', size = 3, shape = 18) +
+  scale_x_discrete(name="Driver Age") +
+  scale_y_continuous(name = "Average Pure Premium", 
+                     breaks=seq(0,500,50), 
+                     sec.axis = sec_axis(~./0.04, name = "Count")) +
+  theme(plot.caption = element_text(hjust = 0)) 
+
+
+grid.arrange(prem_driver_age, prem_weight, nrow = 1)
+
+```
+
+
+```{r eval = FALSE, warning = FALSE, fig.align="center", out.width="50%", fig.cap = "Box plot of pure premium by NCD level."}
+
+# plot box plot of pure premium per ncd_level
+prem_ncd <- data %>% filter(pure_premium < 30000) %>%
+  ggplot(aes(x = as.factor(ncd_level), y = pure_premium, colour = as.factor(ncd_level))) +
+  geom_boxplot(fill="skyblue4", show.legend = FALSE) +
+  theme(plot.caption = element_text(hjust = 0)) +
+  labs(x = "NCD Level ", y ="Pure Prmeium")
+
+prem_ncd
+
+```
+
+
+# Appendix: Connecting to H2O Cluster
+
+```{r eval = FALSE, message = FALSE, warning = FALSE}
+
+# start h2o connection to cluster
+h2o.init() 
+
+# upload datasets to cluster
+xtrain <- xtrain0 %>% 
+  as.h2o()
+xtest <- xtest0 %>% 
+  as.h2o()
+### NOTE TO MARKER: ###
+# randomly select 1000 rows from the training dataset. Partial dependency plots will be 
+# created based on this subset dataset rather than the original dataset. This is due to
+# computational/hardware restrictions. 
+quiet(xtrain1 <- xtrain0[sample(nrow(xtrain0), 1000), ] %>% 
+  as.h2o())
+
+```
+
+
+# Appendix: createGbm Function
+
+```{r eval = FALSE, message = FALSE}
+
+### Parameters
+# mod            - machine learning model type
+# var            - list of variables to be included in the model
+# grid_id        - unique id for grid created by function. The grid contains a list of all
+#                  models per each combination of hyper-parameters inputted
+# hyper_params   - list of hyper-parameters (min_rows, max_depth, sample_rate, 
+#                  col_sample_rate). A different model is fitted for each combination of 
+#                  hyper-parameters. These models are saved as a grid which can be 
+#                  extracted by its grid_id
+# searchCriteria - specify whether to perform a Cartesian or random grid search. Only 
+#                  required when more than 1 combination of hyperparameters are entered
+# dist           - distribution of loss function
+# nTrees         - number of trees built
+
+
+### Output
+# grid           - contains the grid of models built for each combination of 
+#                  hyper-parameters
+# model          - the best model (lowest MAE) in the grid of models
+# cv_metric_smry - cross-validation summary statistics of the best model
+# pred           - predictions of best model on test dataset 
+# metric_plot    - function which takes in a metric and plots metric against number of 
+#                  trees
+# varimp_plot    - function which takes in a number (n) and plots the top n important 
+#                  variables
+
+# the function also automatically saves the top 4 models to the directory 
+# "dir\\R Models\\"
+
+
+# note: set validation frame to xtest just for the purpose of determining how many 
+# trees to build
+
+# function to create GBM
+createGbm <- function(mod, 
+                      var, 
+                      grid_id, 
+                      hyper_params, 
+                      searchCriteria = NULL, 
+                      dist, 
+                      nTrees) {
+  
+  # fit GBM model
+  grid <- h2o.grid(x = var,
+                   y = res,
+                   training_frame        = xtrain,
+                   algorithm             = mod,
+                   grid_id               = grid_id,
+                   hyper_params          = hyper_params,
+                   search_criteria       = searchCriteria,
+                   nfolds                = nfolds,
+                   fold_assignment       = "Random",
+                   distribution          = dist,
+                   ntrees                = nTrees,
+                   #min_rows             = 10,       # minimum number of rows per node
+                   #max_depth            = 4,        # maximum depth of each tree
+                   learn_rate            = 0.001,
+                   min_split_improvement = 1e-08,
+                   #sample_rate          = 0.9,      # sample 90% of rows per tree
+                   #col_sample_rate      = 0.80,     # sample 80% of columns per split
+                   ## early stopping once the validation MAE doesn't improve by at least 
+                   ## 0.1% for 5 consecutive scoring events
+                   stopping_rounds       = 5,
+                   stopping_tolerance    = 1e-3,
+                   stopping_metric       = metric,
+                   ## score every 10 trees to make early stopping reproducible 
+                   ## (it depends on the scoring interval)
+                   score_tree_interval   = 10,
+                   seed                  = 2020
+                   )
+
+  ## Best Model:
+  # sort the grid models by MAE and select best model
+  sortedGrid     <- h2o.getGrid(grid_id, sort_by = "mae", decreasing = FALSE)
+  topModel       <- h2o.getModel(sortedGrid@model_ids[[1]])
+  # save cross-validation metrics of best model - metrics are the average of each 
+  # 5 holdout folds
+  cv_metric_smry <- topModel@model$cross_validation_metrics_summary
+  # calculate predictions of best model on test dataset
+  gbm_pred       <- h2o.predict(topModel, newdata = xtest) %>% 
+    as_tibble()
+  
+  ## Functions:
+  # output cross-validation metric for the best model
+  cv_metric   <- function(metric) {topModel@model$cross_validation_metrics_summary$mean[rownames(data.frame(topModel@model$cross_validation_metrics_summary)) == metric]}
+  # produce plot of metric vs number of trees for a particular metric for the best model
+  metric_plot <- function(metric_plot) {
+    plot(topModel, timestep = "AUTO", metric = metric_plot)
+    }
+  # create variable importance plot for best model
+  varimp_plot <- function(nvar) {h2o.varimp_plot(topModel, nvar)}  
+
+  # save maximum of top 4 models in grid
+  for (i in 1:length(sortedGrid@model_ids)) {
+    h2o.saveModel(h2o.getModel(sortedGrid@model_ids[[i]]), 
+                  paste0(dir, "R Models\\"))
+    if (i == 4) {
+      break
+    } 
+  }
+  
+  # returns objects as a list
+  return(list("grid"           = sortedGrid, 
+              "model"          = topModel, 
+              "cv_metric_smry" = cv_metric_smry,
+              "cv_metric"      = cv_metric,
+              "metric_plot"    = metric_plot, 
+              "varimp_plot"    = varimp_plot, 
+              "pred"           = gbm_pred
+              )
+        )
+}
+
+```
+
+
+# Appendix: Gamma vs Tweedie Distribution 
+## MAE vs Number of Trees
+
+```{r message = FALSE, eval = FALSE}
+
+# ensure MAE has stabalised 
+mod1$metric_plot("mae") # creates about 3,500 trees before early stopping
+mod2_hpt_4$metric_plot("mae") # creates about 3,300 trees before early stopping 
+
+```
+
+```{r message = FALSE, fig.align = "center", echo = FALSE, out.width = "40%", fig.cap = "MAE vs number of trees built for saturated models. Left: GBM model with gamma distribution. Right: GBM model with Tweedie (1.8) distribution."}
+
+# ensure MAE has stabalised 
+mod1$metric_plot("mae") # creates about 3,500 trees before early stopping
+mod2_hpt_4$metric_plot("mae") # creates about 3,300 trees before early stopping 
+
+```
+
+
+## Actual vs Predicted Plots of Gamma and Tweedie Distribution
+
+```{r echo = FALSE, fig.align = "center", out.width="100%", fig.cap = "Actual vs Predicted plot for saturated model. Left: GBM model with gamma distribution. Right: GBM model with Tweedie (1.8) distribution."}
+
+p1 <- plot_res(xtest0$pure_premium, mod1$pred$predict)
+p2 <- plot_res(xtest0$pure_premium, mod2_hpt_4$pred$predict)
+grid.arrange(p1, p2, nrow = 1)
+
+```
+
+
+# Appendix: Manual Backward Selection of Gamma Model
+
+```{r backward selection, eval = FALSE}
+
+# fit gamma model removing the 5 least important variables  
+var_cut1 <- setdiff(var, tail(h2o.varimp(mod1$model)$variable, 5))
+mod3_gam_cut1 <- createGbm(mod = mod,
+                           var = var_cut1, 
+                           grid_id = "mod3_gam_cut1", 
+                           hyper_params = hyper_params0, 
+                           dist = "gamma", nTrees = 3500
+                           )
+# cut next 3 least important variables - these are the dimensions of the car
+var_cut2 <- setdiff(var_cut1, tail(h2o.varimp(mod3_gam_cut1$model)$variable, 3))
+mod4_gam_cut2 <- createGbm(mod = mod,
+                           var = var_cut2, 
+                           grid_id = "mod4_gam_cut2", 
+                           hyper_params = hyper_params0, 
+                           dist = "gamma", 
+                           nTrees = 3500
+                           )
+# cut next 3 least important variables  
+var_cut3 <- setdiff(var_cut2, tail(h2o.varimp(mod4_gam_cut2$model)$variable, 3))
+mod5_gam_cut3 <- createGbm(mod = mod,
+                           var = var_cut3, 
+                           grid_id = "mod5_gam_cut3", 
+                           hyper_params = hyper_params0, 
+                           dist = "gamma", 
+                           nTrees = 3500
+                           )
+# cut next 2 least important variables  
+var_cut4 <- setdiff(var_cut3, tail(h2o.varimp(mod4_gam_cut2$model)$variable, 2))
+mod6_gam_cut4 <- createGbm(mod = mod,
+                           var = var_cut4, 
+                           grid_id = "mod6_gam_cut4", 
+                           hyper_params = hyper_params0, 
+                           dist = "gamma", 
+                           nTrees = 3500
+                           )
+```
+
+
+# Appendix: Actual vs Predicted Plots of Top Three Tuned Models
+
+```{r echo = FALSE, fig.cap = "Actual vs Predicted plot for tuned models. Top left: Model_6. Top right: Model_15. Bottom left: Model_18."}
+
+p1 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_3$pred$predict)
+p2 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_6$pred$predict)
+p3 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_15$pred$predict)
+grid.arrange(p1, p2, p3, nrow = 2)
+
+```
+
+
+# Appendix: Pairwise Interaction Plots of Final Model
+
+```{r eval = FALSE}
+
+# create a data frame with just the features
+xtest_sub <- as.data.frame(xtest)
+features <- xtest_sub[, colnames(xtest_sub) %in% var_cut3]
+# vector with the actual responses
+response <- as.vector(xtest_sub$pure_premium)
+# create custom predict function which is compatible with IML package
+pred <- function(model, newdata)  {
+  results <- as.data.frame(h2o.predict(model, as.h2o(newdata)))
+  return(results[[3L]])
+}
+# create predictor object
+predictor.gbm <- Predictor$new(
+  model       = mod_fin$model, 
+  data        = features, 
+  y           = response, 
+  predict.fun = pred
+)
+interact.gbm.year <- Interaction$new(predictor.gbm, feature = "year") %>% plot()
+interact.gbm.region <- Interaction$new(predictor.gbm, feature = "region") %>% plot()
+
+```
+

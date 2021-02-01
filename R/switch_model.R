@@ -71,6 +71,9 @@ switch_model <- function(nano, model_id, model_no, varimp_eval = FALSE, pdp_eval
   # replace current model with new model
   nano$model[[model_no]] <- model
   
+  # calculate new metrics
+  nano$metric[[model_no]] <- nano:::model_metrics(nano$model[[model_no]], data)
+  
   # calculate new meta data
   nano$meta[[model_no]] <- nano:::model_meta(model, as.h2o(data))
   

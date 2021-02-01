@@ -17,6 +17,7 @@ nano_automl(
   max_models = 3,
   max_time = 10 * 60,
   thresh = 10,
+  monotone_constraints = NULL,
   exclude_algos = c("StackedEnsemble", "DeepLearning"),
   include_algos = NULL,
   plots = TRUE,

@@ -55,25 +55,25 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
          call. = FALSE)
   }
   
-  setDT(data)
+  data.table::setDT(data)
   
-  #get initial vif value for all comparisons of variables
+  # get initial vif value for all comparisons of variables
   vif_init <- NULL
   var_names <- names(data)[sapply(data, is.numeric)]
   for(val in var_names){
     regressors <- names(data)[-which(names(data) == val)]
     form <- paste(regressors, collapse = '+')
     form_in <- formula(paste(val, '~', form))
-    vif_init <- rbind(vif_init, c(val, VIF(lm(form_in, data = data))))
+    vif_init <- rbind(vif_init, c(val, fmsb::VIF(lm(form_in, data = data))))
   }
   
-  vif_init <- as.data.table(vif_init)
+  vif_init <- data.table::as.data.table(vif_init)
   names(vif_init) <- c("var", "vif")
   vif_init[, vif := as.numeric(vif)]
 
   if (!remove) {
     if (trace) {
-      print(vif_init)
+      print(vif_init[order(-vif)])
     }
     return(vif_init)
     quit()
@@ -92,33 +92,36 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
       return(out)
     }
     else {
-      in_dat <- copy(data)
+      in_dat <- data.table::copy(data)
       
       #backwards selection of explanatory variables, stops when all VIF values are below 'thresh'
       while(vif_max >= thresh) {
         
         vif_vals <- NULL
         vars <- names(in_dat)
-        var_names <- vars[sapply(in_dat, is.numeric)]
+        var_names <- setdiff(vars[sapply(in_dat, is.numeric)], ignore)
         
         for(val in var_names) {
           regressors <- vars[-which(vars == val)]
           form <- paste(regressors, collapse = '+')
           form_in <- formula(paste(val, '~', form))
-          vif_add <- VIF(lm(form_in, data = in_dat))
-          vif_vals <- rbind(vif_vals,c(val,vif_add))
+          vif_add <- fmsb::VIF(lm(form_in, data = in_dat))
+          vif_vals <- rbind(vif_vals, c(val, vif_add))
         }
         
         vif_eval <- vif_vals
-        if (length(ignore) > 0) vif_eval <- vif_vals[-match(ignore, vif_vals[,1]), ]
+        #if (length(ignore) > 0) vif_eval <- vif_vals[-match(ignore, vif_vals[,1]), ]
         max_row <- which(vif_eval[,2] == max(as.numeric(vif_eval[,2]), na.rm = TRUE))[1]
         
-        vif_max <-as.numeric(vif_eval[max_row, 2])
+        vif_max <- as.numeric(vif_eval[max_row, 2])
         
         if (vif_max < thresh) break
         
         if (trace) { #print output of each iteration
-          prmatrix(vif_vals, collab = c('var','vif'), rowlab = rep('', nrow(vif_vals)), quote = F)
+          output <- data.table::as.data.table(vif_vals)
+          names(output) <- c('var','vif')
+          output[, vif := as.numeric(vif)]
+          print(output[order(-vif)])
           cat('\n')
           cat('removed: ', vif_eval[max_row, 1],vif_max,'\n\n')
           flush.console()
@@ -128,11 +131,11 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
         
       }
       
-      vif_vals <- as.data.table(vif_vals)
+      vif_vals <- data.table::as.data.table(vif_vals)
       names(vif_vals) <- c("var", "vif")
       vif_vals[, vif := as.numeric(vif)]
       
-      out = list(data = in_dat, vif = vif_vals)
+      out = list(data = in_dat, vif = vif_vals[order(-vif),])
       return(out)
     }
   }

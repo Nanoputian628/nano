@@ -10,9 +10,7 @@
 #' @param pred_matrix optional pre-defined prediction matrix to derive the imputed values when 
 #' using the "mice" method.
 #' @param impute_outlier a numeric where values which are `impute_outlier` standard deviations 
-#' away from the mean will be imputed. Can either be a single number or a vector of numbers for 
-#' each column in `data` (including variables in `impute_ignore`. By default, set to \code{Inf}, 
-#' hence no outliers are imputed. 
+#' away from the mean will be imputed. By default, set to \code{Inf}, hence no outliers are imputed. 
 #' @param seed seed for `set.seed`.  
 #' @return imputed data.table.
 #' @details Imputes missing values (blanks or NAs) in dataset. There are two possible methods of imputation. If `method`
@@ -101,14 +99,13 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
   setDT(data)
   data[data == ""] <- NA
   # replace outliers with NA
-  if (length(impute_outlier) == 1) impute_outlier <- rep(impute_outlier, ncol(data))
   outlier_detect <- function(x) {
     replace(x, 
-            abs(x - mean(x, na.rm = TRUE)) > impute_outlier[names(data) %in% x] * sd(x, na.rm = TRUE),
+            abs(x - mean(x, na.rm = TRUE)) > impute_outlier * sd(x, na.rm = TRUE),
             NA)
   }
-  impute_var_num <- names(data)[sapply(data, is.numeric)][
-    !(names(data)[sapply(data, is.numeric)] %in% impute_ignore)]
+  impute_var_num <- names(data)[sapply(data, is.numeric)
+                                ][!(names(data)[sapply(data, is.numeric)] %in% impute_ignore)]
   data[, (impute_var_num) := lapply(.SD, outlier_detect), .SDcols = impute_var_num]
 
   if (method == "mean/mode") {
