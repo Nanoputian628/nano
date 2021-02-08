@@ -268,6 +268,18 @@ Testing dataset: ", nrow(data_test), " rows."))
     data_train[, fold := as.factor(fold)]
   }
   
+  ### CREATE PLOT TO VERIFY DATA IS BALANCED BETWEEN TRAINING/TESTING/HOLDOUT
+  # p1 <- ggplot(data = xtrain0 %>% filter(pure_premium < 20000 & pure_premium > 0)) + 
+  #   geom_histogram(mapping = aes(x = pure_premium), fill = "royalblue") +
+  #   lares::theme_lares2(bg_colour = "white") # histogram of training data 
+  # p2 <- ggplot(data = xtest0 %>% filter(pure_premium < 20000 & pure_premium > 0)) + 
+  #   geom_histogram(mapping = aes(x = pure_premium), fill = "royalblue") +
+  #   lares::theme_lares2(bg_colour = "white") # histogram of test data
+  # # display plots
+  # grid.arrange(p1, p2, nrow = 1) # plots are very similar as expected
+  
+  
+  
   # re-level response if factor type
   if (is.factor(data_train[, response, with = FALSE])) {
     freq <- as.data.frame(table(data_train[, response, with = FALSE]))
@@ -295,7 +307,7 @@ Testing dataset: ", nrow(data_test), " rows."))
       cat("The following variables were removed due to low variance:\n")
       for (var in rm_var) {
         freq_ratio <- round(freq$freqRatio[rownames(freq) == var], 2)
-        cat(paste0(var, ": ", freq_ratio, "\n"))
+        cat(paste0(" ", var, ": ", freq_ratio, "\n"))
       }
     }
     # adjust vif_ignore for removed variables
@@ -313,7 +325,7 @@ Testing dataset: ", nrow(data_test), " rows."))
       cat("Following variables were removed due to high VIF:\n")
       rm_var_vif <- setdiff(names(data_train), names(train_vif$data))
       for (var in rm_var_vif) {
-        cat(paste0(var, "\n"))
+        cat(paste0(" ", var, "\n"))
       }
     }
     

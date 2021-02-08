@@ -1,7 +1,9 @@
 #' @title Convert Grid to Nano Object  
 #' @description Converts a grid in a nano object to a separate nano object. 
 #' @param nano nano object containing the grid to be converted to a new nano object.
-#' @param grid_no a numeric. Position of grid to be converted to a nano object.
+#' @param grid_no a numeric. Vector containing positions of grids to be converted to a nano
+#'  object.
+#' @param n_top_model a numeric. Vector of the n top number of models to select from each grid.
 #' @return a `nano` object
 #' @details Converts a specified grid in a nano object to a new nano object where a new slot 
 #' is created for each model in the specified grid. The purpose of this function is to be used
@@ -44,49 +46,74 @@
 #' @export
 
 
-grid_to_nano <- function(nano, grid_no = nano$n_model) {
+grid_to_nano <- function(nano, grids_no = nano$n_model, 
+                         n_top_model = length(nano$grid[[grid_no]]@model_ids)) {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 
          call. = FALSE)
   }
   
-  if (grid_no < 1 | grid_no > nano$n_model | grid_no %% 1 != 0) {
-    stop(paste0("`grid_no` must be an integer between 1 and ", nano$n_model),
+  if (min(grids_no) < 1 | max(grids_no) > nano$n_model | any(grids_no %% 1 != 0)) {
+    stop(paste0("`grids_no` must be a vector of integers between 1 and ", nano$n_model),
          call. = FALSE)
   }
   
-  num  <- length(nano$grid[[grid_no]]@model_ids)
-  grid <- rep(list(nano$grid[[grid_no]]), num)
-  data <- list(nano$data[[grid_no]])
+  grid_all        <- list()
+  model_all       <- list()
+  data_all        <- list()
+  varimp_all      <- list()
+  pdp_all         <- list()
+  ice_all         <- list()
+  interaction_all <- list()
   
-  # produce list of models in chosen grid
-  model <- rep(list(NA), num)
-  for (i in length(model)) {
-    model[[i]] <- h2o::h2o.getModel(nano$grid[[grid_no]]@model_ids[[i]])
+  if (length(grids_no) > 1 & length(n_top_model) == 1) {
+    n_top_model <- rep(n_top_model, length(grids_no))
   }
   
-  # copy calculated diagnostics from original nano object to new nano object
-  varimp      <- rep(list(nano$grid[[grid_no]]), num)
-  pdp         <- rep(list(nano$grid[[grid_no]]), num)
-  ice         <- rep(list(nano$grid[[grid_no]]), num)
-  interaction <- rep(list(nano$grid[[grid_no]]), num)
-  
-  index <- which(nano$grid[[grid_no]]@model_ids == nano$model[[grid_no]]@model_id)
-  varimp[[index]]      <- nano$varimp[[grid_no]]
-  pdp[[index]]         <- nano$pdp[[grid_no]]
-  ice[[index]]         <- nano$ice[[grid_no]]
-  interaction[[index]] <- nano$interaction[[grid_no]]
-   
+  for (grid_no in grids_no) {
+    
+    num  <- min(length(nano$grid[[grid_no]]@model_ids), n_top_model[which(grid_no  == grids_no)])
+    grid <- rep(list(nano$grid[[grid_no]]), num)
+    data <- rep(list(nano$data[[grid_no]]), num)
+    
+    # produce list of models in chosen grid
+    model <- rep(list(NA), num)
+    for (i in 1:length(model)) {
+      model[[i]] <- h2o::h2o.getModel(nano$grid[[grid_no]]@model_ids[[i]])
+    }
+    
+    # copy calculated diagnostics from original nano object to new nano object
+    varimp      <- rep(list(NA), num)
+    pdp         <- rep(list(NA), num)
+    ice         <- rep(list(NA), num)
+    interaction <- rep(list(NA), num)
+    
+    index <- which(nano$grid[[grid_no]]@model_ids == nano$model[[grid_no]]@model_id)
+    varimp[[index]]      <- nano$varimp[[grid_no]]
+    pdp[[index]]         <- nano$pdp[[grid_no]]
+    ice[[index]]         <- nano$ice[[grid_no]]
+    interaction[[index]] <- nano$interaction[[grid_no]]
+    
+    # combine to overall list
+    grid_all        <- c(grid_all, grid)
+    model_all       <- c(model_all, model)
+    data_all        <- c(data_all, data)
+    varimp_all      <- c(varimp_all, varimp)
+    pdp_all         <- c(pdp_all, pdp)
+    ice_all         <- c(ice_all, ice)
+    interaction_all <- c(interaction_all, interaction)
+    
+  }
     
   # create nano object
-  nano <- nano::create_nano(grid        = grid,
-                            model       = model, 
-                            data        = data,
-                            varimp      = varimp,
-                            pdp         = pdp,
-                            ice         = ice,
-                            interaction = interaction)
-  return(nano)
+  new <- nano::create_nano(grid        = grid_all,
+                           model       = model_all, 
+                           data        = data_all,
+                           varimp      = varimp_all,
+                           pdp         = pdp_all,
+                           ice         = ice_all,
+                           interaction = interaction_all)
+  return(new)
 }
 

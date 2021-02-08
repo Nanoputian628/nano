@@ -23,8 +23,8 @@ nano_grid(
   max_models = 10,
   max_runtime_secs = 60 * 10,
   stopping_metric = NULL,
-  stopping_tolerance = NULL,
-  stopping_rounds = NULL,
+  stopping_tolerance = 0,
+  stopping_rounds = 0,
   plots = TRUE,
   alarm = TRUE,
   quiet = FALSE,
@@ -32,6 +32,7 @@ nano_grid(
   subdir = NA,
   project = "ML Project",
   seed = 628,
+  grid_description = "",
   ...
 )
 }
@@ -72,6 +73,10 @@ however it cannot contain the values "test".}
 \item{thresh}{a numeric. Cutoff of number of unique values in response variable to
 determine whether performing classification or regression. Default value is 10.}
 
+\item{monotone_constraints}{a list. Mapping between variable names in \code{data} to values
++1 or -1. Use +1 to enforce an increasing constraint while use -1 for a decreasing
+constraint. Constraints are only valid for numerical columns.}
+
 \item{hyper_params}{a list. Contains model hyper-parameters for hyper-parameter tuning. The
 possible hyper-parameters that can be used depends on the algorithm. Look at the \code{H2O}
 functions for the specific algorithm to see full details on the available hyper-parameters:
@@ -100,6 +105,11 @@ not at least improved by the \code{stopping_tolerance}, then terminate fitting p
 \item{quiet}{a logical. Whether to print messages to the console.}
 
 \item{seed}{a numeric.}
+
+\item{grid_description}{a character. Optional description of grid. Can be later accessed by
+\code{nano$grid[[grid_no]]@meta$description}.}
+
+\item{...}{further parameters to pass to \code{h2o.grid} depending on \code{algo}.}
 }
 \value{
 nano object with new entry filled with grid produced.
@@ -112,8 +122,10 @@ Creates wide range of machine learning models and perform grid search using
 This function used \code{H2O}'s \code{h2o.grid} function to easily and quickly build
 difference machine learning models and perform grid search for hyper-parameter tuning. To
 perform hyper-parameter tuning, input the desired hyper-parameters in the \code{hyper_params}
-argument and set the range of values to build the models on. For more details, please see
-the documentation for \code{h2o.grid}.
+argument and set the range of values to build the models on. Importantly, an active H2O
+connection is required (i.e. run \code{h2o.init()})) before using this function.
+
+For more details, please see the documentation for \code{h2o.grid}.
 }
 \examples{
 \dontrun{

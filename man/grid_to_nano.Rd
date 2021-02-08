@@ -4,12 +4,19 @@
 \alias{grid_to_nano}
 \title{Convert Grid to Nano Object}
 \usage{
-grid_to_nano(nano, grid_no = nano$n_model)
+grid_to_nano(
+  nano,
+  grids_no = nano$n_model,
+  n_top_model = length(nano$grid[[grid_no]]@model_ids)
+)
 }
 \arguments{
 \item{nano}{nano object containing the grid to be converted to a new nano object.}
 
-\item{grid_no}{a numeric. Position of grid to be converted to a nano object.}
+\item{n_top_model}{a numeric. Vector of the n top number of models to select from each grid.}
+
+\item{grid_no}{a numeric. Vector containing positions of grids to be converted to a nano
+object.}
 }
 \value{
 a \code{nano} object

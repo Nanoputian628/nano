@@ -47,10 +47,10 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   if (!data.table::is.data.table(data)) {
     data.table::setDT(data)
   }
-  data <- data[, keep_var, with = FALSE]
+  data_mod <- data[, keep_var, with = FALSE]
   
-  blank_num <- sapply(data, function(x) if(is.factor(x)) sum(gsub(" ", "", x) == "", na.rm = TRUE) else 0)
-  na_num <- sapply(data, function(x) sum(is.na(x)))
+  blank_num <- sapply(data_mod, function(x) if(is.factor(x)) sum(gsub(" ", "", x) == "", na.rm = TRUE) else 0)
+  na_num <- sapply(data_mod, function(x) sum(is.na(x)))
   if (!quiet) {
     message("Dataset has ", sum(blank_num), " blank values and ", sum(na_num), " na values.")
   }
@@ -59,13 +59,13 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
     missing_var <- union(names(blank_num)[(blank_num != 0)], names(na_num)[na_num != 0])
     blank_var <- as.vector(blank_num[match(missing_var, names(blank_num))])
     na_var <- as.vector(na_num[match(missing_var, names(na_num))])
-    missing_smry <- data.table(variable   = missing_var,
-                               blank_num  = blank_var,
-                               blank_perc = round(blank_var / nrow(data) * 100, 2),
-                               na_num     = na_var,
-                               na_perc    = round(na_var / nrow(data) * 100, 2),
-                               total_num  = blank_var + na_var,
-                               total_perc = round((blank_var + na_var)/nrow(data) * 100, 2))
+    missing_smry <- data.table::data.table(variable   = missing_var,
+                                           blank_num  = blank_var,
+                                           blank_perc = round(blank_var / nrow(data) * 100, 2),
+                                           na_num     = na_var,
+                                           na_perc    = round(na_var / nrow(data) * 100, 2),
+                                           total_num  = blank_var + na_var,
+                                           total_perc = round((blank_var + na_var)/nrow(data) * 100, 2))
   } else {
     missing_smry <- "Dataset has no missing values."
   }
@@ -97,7 +97,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   
   # outliers in dataset
   outlier_fun <- function(x) {
-    which(abs((x - mean(x))/sd(x)) > outlier_sd)
+    which(abs((x - mean(x, na.rm = TRUE))/sd(x, na.rm = TRUE)) > outlier_sd)
   }
   outlier_index <- lapply(data[, sapply(data, is.numeric), with = FALSE], outlier_fun)
   outlier_num <- sapply(outlier_index, length)
@@ -108,7 +108,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
       for (var in outlier_var) {
         outlier_row <- union(outlier_row, outlier_index[[var]])
       }
-      outliers <- data.table::copy(data)
+      outliers <- data.table::copy(data_mod)
       outliers <- outliers[outlier_row]
       outliers <- outliers[, outlier_var, with = FALSE]
       outliers <- outliers[, index := outlier_row]
@@ -122,7 +122,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
                                paste(outlier_cols, as.vector(outliers[[var]]), sep = ", "))
       }
       outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
-      outlier_dat <- data.table::copy(data)[outlier_row][
+      outlier_dat <- data.table::copy(data_mod)[outlier_row][
         , outlier_cols := outlier_cols]
       outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
     } else {
@@ -137,7 +137,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
   
   # check for special characters
   pattern <- "/|:|\\?|<|>|\\|\\\\|\\*|\\@|\\#|\\$|\\%|\\^|\\&"
-  special_index <- lapply(data, function(x) which(grepl(pattern, x)))
+  special_index <- lapply(data_mod, function(x) which(grepl(pattern, x)))
   special_num <- sapply(special_index, length)
   if (sum(special_num) != 0) {
     special_var <- names(special_num)[special_num != 0]
@@ -145,7 +145,7 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
     for (var in special_var) {
       special_row <- union(special_row, special_index[[var]])
     }
-    special_dat <- copy(data)[special_row][, special_var, with = FALSE]
+    special_dat <- copy(data_mod)[special_row][, special_var, with = FALSE]
     special_plot <- plot(special_num) # replace with own user defined plotting functions
   } else {
     special_dat <- "Dataset has no special characters!"

@@ -37,10 +37,15 @@
 #' @param alarm a logical. Whether to beep when function has finished running.
 #' @param quiet a logical. Whether to print messages to the console.
 #' @param seed a numeric.
+#' @param grid_description a character. Optional description of grid. Can be later accessed by
+#' \code{nano$grid[[grid_no]]@meta$description}. 
+#' @param ... further parameters to pass to \code{h2o.grid} depending on `algo`.
 #' @return nano object with new entry filled with models produced. 
 #' @details This function used `H2O`'s \code{h2o.automl} function to easily and quickly build
-#' several different machine learning models. For more details, please see the documentation 
-#' for \code{h2o.automl}.
+#' several different machine learning models. Importantly, an active H2O connection is 
+#' required (i.e. run \code{h2o.init()})) before using this function. 
+#' 
+#' For more details, please see the documentation for \code{h2o.automl}.
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
@@ -75,7 +80,8 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
                          max_time = 10 * 60, thresh = 10, monotone_constraints = NULL,
                          exclude_algos = c("StackedEnsemble", "DeepLearning"), 
           include_algos = NULL, plots = TRUE, alarm = TRUE, quiet = FALSE, 
-          save = FALSE, subdir = NA, project = "ML Project", seed = 628, ...) {
+          save = FALSE, subdir = NA, project = "ML Project", seed = 628, 
+          project_name = paste0("grid_", nano$n_model + 1), grid_description = "", ...) {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 
@@ -97,8 +103,8 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
          call. = FALSE)
   }
   
-  if (!is.na(train_test) & !all(c("train", "test") %in% data[[train_test]])) {
-    stop("`train_test` column must contain the values `train` and `test`.",
+  if (!is.na(train_test) & !all(unique(data[[train_test]]) %in% c("train", "test", "holdout"))) {
+    stop("`train_test` column must contain the values `train`, `test` or `holdout`.",
          call. = FALSE)
   }
   
@@ -107,6 +113,10 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
          call. = FALSE)
   }
   
+  if (!is.character(grid_description)) {
+    stop("`grid_description` must be character type.",
+         call. = FALSE)
+  }
   
   nano:::tic(id = "nano_automl")
   on.exit(nano:::toc(id = "nano_automl", msg = "Process duration:", 
@@ -125,7 +135,9 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
   train <- data.table::as.data.table(data)
   if (!is.na(train_test)) {
     train <- data[get(train_test) == "train"]
-    test  <- data[get(train_test) == "test"]
+    if ("test" %in% data[[train_test]]) {
+      test  <- data[get(train_test) == "test"]
+    }
   }
   
   # if nfolds specified, assign folds to rows
@@ -162,19 +174,21 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
   
   # fit models
   params <- list(...)
-  aml <- do.call(h2o:::h2o.automl, c(list(x = setdiff(names(train), c(response, ignore_vars)), 
+  aml <- do.call(h2o:::h2o.automl, c(list(x = setdiff(names(train), unique(c(response, ignore_vars))), 
                                           y                    = response, 
-                                          training_frame       = nano:::quiet(as.h2o(train)),
+                                          project_name         = project_name,
+                                          training_frame       = nano:::quiet(h2o::as.h2o(train)),
                                           max_runtime_secs     = max_time, 
                                           max_models           = max_models, 
-                                          monotone_constraints = monotone_constraints,
                                           exclude_algos        = exclude_algos, 
                                           include_algos        = include_algos, 
-                                          seed                 = seed, 
-                                          params),
-                                     list(validation_frame = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
-                                     list(weights_column   = weight_column)[!is.null(weight_column)],
-                                     list(fold_column      = fold_column)[!is.null(fold_column)]))
+                                          seed                 = seed),
+                                     list(validation_frame     = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
+                                     list(weights_column       = weight_column)[!is.null(weight_column)],
+                                     list(monotone_constraints = monotone_constraints)[!is.null(monotone_constraints)],
+                                     list(fold_column          = fold_column,
+                                          keep_cross_validation_models = TRUE)[!is.null(fold_column)],
+                                     list(params)[length(params) > 0]))
 
 
   # print leaderboard
@@ -186,13 +200,13 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
         message(paste("- EUREKA: Succesfully generated", 
                       nrow(aml@leaderboard), "models"))
         if (!quiet) 
-          print(head(aml@leaderboard, 3))
+          print(head(aml@leaderboard, 10))
       }
   }
   
   
   # recreate dataset to input into nano object
-  if (missing(train_test)) {
+  if (missing(train_test) & !"data_id" %in% names(data)) {
     # is train_test column is not specified, create data_id column 
     # and combine datasets together 
     train[, data_id := "train"]
@@ -205,7 +219,9 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
     if (!"data_id" %in% names(data)) {
       # rename train_test to data_id for consistency
       names(data)[names(data) == train_test] <- "data_id" 
-      message("Renaming ", train_test, "to data_id.")
+      if (!quiet) {
+        message("Renaming ", train_test, "to data_id.")
+      }
     }
   }
   
@@ -226,6 +242,7 @@ nano_automl <- function (nano = nano::create_nano(), response, data, test,
   nano$data[[nano$n_model]]   <- data
   nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
+  nano$grid[[nano$n_model]]@meta$description <- grid_description
   
   # rename elements in nano object
   names(nano$grid)[nano$n_model]   <- paste0("grid_"  , nano$n_model)

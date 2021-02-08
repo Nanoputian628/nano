@@ -2,9 +2,10 @@
 #' @description Detects and removes multi-collinearity via step-wise VIF selection.
 #' @importFrom fmsb VIF
 #' @param data dataset to be analysed.
-#' @param ignore columns in dataset to be not removed. Only relevant if `remove` is \code{TRUE}. 
+#' @param ignore columns in dataset to be not removed. Only relevant if `remove` is 
+#' \code{TRUE}. 
 #' @param thresh threshold of VIF for variables to be removed.
-#' @param trace a logical to indicate if the sequence of which variables are removed should be 
+#' @param trace a logical to indicate if the sequence of which variables are removed should be
 #' printed to the console. 
 #' @param remove a logical to indicate if variables with VIF higher than `thresh` should be removed. #' If \code{FALSE}, only the VIF for each variable will be output and no variables will be removed. #' Default is \code{TRUE}.
 #' @return list containing dataset with variables with high VIF removed and a data.table of VIF for
@@ -59,7 +60,9 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
   
   # get initial vif value for all comparisons of variables
   vif_init <- NULL
+  # take only numeric variables
   var_names <- names(data)[sapply(data, is.numeric)]
+  ignore <- intersect(ignore, var_names)
   for(val in var_names){
     regressors <- names(data)[-which(names(data) == val)]
     form <- paste(regressors, collapse = '+')
@@ -90,8 +93,7 @@ vif_step <-function(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
       }
       out <- list(data = data, vif = vif_init)
       return(out)
-    }
-    else {
+    } else {
       in_dat <- data.table::copy(data)
       
       #backwards selection of explanatory variables, stops when all VIF values are below 'thresh'

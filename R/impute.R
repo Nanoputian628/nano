@@ -142,7 +142,7 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     # perform initial imputation to extract default imputation methods and 
     # predictor matrix
     set.seed(seed)
-    init = quiet(mice::mice(data, maxit=0))
+    init = nano:::quiet(mice::mice(data, maxit=0))
     if (is.null(mice_method)) meth = init$method
     if (is.null(pred_matrix)) pred_matrix = init$predictorMatrix
     meth[names(meth) %in% impute_ignore] <- ""
@@ -150,7 +150,7 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     
     # perform actual imputation
     set.seed(seed)
-    imputed <- quiet(mice::mice(data, method = meth, predictorMatrix = pred_matrix, m = 1))
+    imputed <- nano:::quiet(mice::mice(data, method = meth, predictorMatrix = pred_matrix, m = 1))
     data <- mice::complete(imputed)
     setDT(data)
     if (sum(is.na(data[, setdiff(names(data), impute_ignore), with = FALSE])> 0)) {

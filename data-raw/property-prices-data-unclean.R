@@ -11,17 +11,22 @@ colnames_snk <- gsub("([a-z])([A-Z])", "\\1_\\L\\2", colnames_cam, perl = TRUE)
 colnames_snk <- sub("^(.[a-z])", "\\L\\1", colnames_snk, perl = TRUE)
 colnames(data) <- colnames_snk
 
+# enrich data
+set.seed(2020)
 data[, sale_price := exp(log_sale_price)
-     ][, rtm := "Y"
-       ][sample(nrow(data), 20), rtm := "N"
-         ][, log_sale_price := NULL
+     ][sample(nrow(data), 30), sale_price := NA
+       ][, rtm := "Y"
+         ][sample(nrow(data), 30), rtm := "N"
+           ][, log_sale_price := NULL
 ]
 
+# filter out any property prices greater than $2M
+data <- data[sale_price < 2000000 | is.na(sale_price)]
 
-set.seed(628)
+set.seed(2020)
 vars <- sample(names(data), 10)
 replace_vec <- function(x) {
-  x[sample(1:length(x), as.integer(runif(1, 5, 25)))] <- replace
+  x[sample(length(x), as.integer(runif(1, 5, 30)))] <- replace
   x
 }
 
@@ -29,16 +34,16 @@ replace <- NA
 data[, (vars) := lapply(.SD, replace_vec), .SDcols = vars]
 
 replace <- ""
-vars_char <- sample(names(data)[sapply(data, is.character)], 5)
+vars_char <- "rtm"
 data[, (vars_char) := lapply(.SD, replace_vec), .SDcols = vars_char]
 
-set.seed(628)
+set.seed(2020)
 vars_num <- sample(names(data)[sapply(data, is.numeric)], 3)
-replace <- 99999
+replace <- 999999
 data[, (vars_num) := lapply(.SD, replace_vec), .SDcols = vars_num]
 
-set.seed(628)
-dup_rows <- data[sample(nrow(data), 35)]
+set.seed(2020)
+dup_rows <- data[sample(nrow(data), 50)]
 data <- rbind(data, dup_rows)
 property_prices_unclean <- data.table::copy(data)[, V1 := NULL]
 

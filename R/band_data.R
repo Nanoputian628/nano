@@ -175,15 +175,34 @@ band_data <- function(data, intervals, buckets = NULL, na_bucket, unmatched_buck
     
     # if buckets is not provided, use bands as the buckets
     if (is.null(buckets)) buckets_var <- bands else buckets_var <- buckets[[var]]
+
     # create bands using fancycut package
-    
     data[, paste0(var, "_bnd") := do.call(nano:::wafflecut, c(list(x = data[[var]],
                                                                    intervals = bands,
                                                                    buckets = buckets_var),
                                                               list(unmatched.bucket = unmatched_bucket_var)[!is.null(unmatched_bucket_var)],
                                                               list(na.bucket = na_bucket_var)[!is.null(na_bucket_var)]))
     ]
+    
+    # order for specifying ordered factor levels
+    level_order <- c(buckets_var, 
+                     if (!missing(unmatched_bucket)) unmatched_bucket_var,
+                     if (!missing(na_bucket)) na_bucket_var
+    )
+    # select only level names with frequency greater than 0
+    level_names <- names(table(data[[paste0(var, "_bnd")]]))[as.vector(table(data[[paste0(var, "_bnd")]])) > 0]
+    level_order <- intersect(level_order, level_names)
+    
+    # order banded variable
+    data[, paste0(var, "_bnd") := factor(as.character(get(paste0(var, "_bnd"))),
+                                         ordered = TRUE,
+                                         levels = level_order)]
   }
+  
+  # reset levels for all banded variables to remove levels with 0 frequency
+  # var_bnd <- paste0(names(intervals), "_bnd")
+  # data[, (var_bnd) := lapply(.SD, function(x) as.factor(as.character(x))), .SDcols = var_bnd]
+  
   return(data)
 }
 

@@ -1,4 +1,5 @@
 #' @title Tidy Dataset for General Use
+#' @import data.table
 #' @description Tidies dataset for general use by correcting variable types, variable names and
 #' removing blanks/NAs in response variable.
 #' @param data dataset to be tidied.

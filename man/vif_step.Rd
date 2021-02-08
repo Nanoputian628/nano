@@ -9,7 +9,8 @@ vif_step(data, ignore = c(), thresh = 5, trace = TRUE, remove = TRUE)
 \arguments{
 \item{data}{dataset to be analysed.}
 
-\item{ignore}{columns in dataset to be not removed. Only relevant if \code{remove} is \code{TRUE}.}
+\item{ignore}{columns in dataset to be not removed. Only relevant if \code{remove} is
+\code{TRUE}.}
 
 \item{thresh}{threshold of VIF for variables to be removed.}
 

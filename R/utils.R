@@ -242,25 +242,30 @@ model_meta <- function(model, data) {
   meta[["is_multinomial_classification"]] <- model_info$is_multinomial_classification
   meta[["distribution"]] <- model@parameters$distribution
   meta[["hyper_params"]] <- model@allparameters[c("ntrees", "max_depth", "min_rows", 
-                                                  "nbins", "stopping_rounds", 
-                                                  "stopping_tolerance", "mtries", 
-                                                  "sample_rate", "col_sample_rate_per_tree",
+                                                  "learn_rate", "distribution", 
+                                                  "tweedie_power", "sample_rate", 
+                                                  "col_sample_rate",
+                                                  "col_sample_rate_per_tree",
                                                   "min_split_improvement")]
+  meta[["search_conditions"]] <- model@allparameters[c("stopping_rounds", "stopping_metric", "stopping_tolerance")]
   meta[["max_runtime_secs"]] <- model@allparameters$max_runtime_secs
   meta[["seed"]] <- model@allparameters$seed
+  meta[["description"]] <- ""
   return(meta)
 }
 
 
 
 # calculates metrics from h2o model. This will be input into nano object
-model_metrics <- function(model, data) {
-  model_info <- h2o:::.process_models_or_automl(model, h2o::as.h2o(data))
-
-  data_type <- unique(data$data_id)
-  # calculate performance object for each data type
-  for (type in data_type) {
-    assign(paste0(type, "_perf"), h2o::h2o.performance(model, h2o::as.h2o(data[data_id == type])))
+model_metrics <- function(model, data = NULL) {
+  
+  # determine model type
+  if (class(model) == "H2ORegressionModel") {
+    model_type = "regression"
+  } else if (class(model) == "H2OMultinomialModel") {
+    model_type = "multinomial classification"
+  } else {
+    model_type = "binomial classification"
   }
   
   # assign list to hold metrics
@@ -268,74 +273,101 @@ model_metrics <- function(model, data) {
                   test_metrics    = NULL,
                   cv_metrics      = NULL,
                   holdout_metrics = NULL)
-  # function to calculate specific metric for each 
+  
+  
+  # functions to calculate metrics
   metric_fun <- function(fun, metric) {
-    for (type in data_type) {
-      metrics[[paste0(type, "_metrics")]][[metric]] <- fun(get(paste0(type, "_perf"))) 
+    
+    # calculate train metrics
+    metrics$train_metrics[[metric]] <- fun(model, train = TRUE)
+    
+    # calculate test metrics
+    if (!is.null(model@model$validation_metrics@metrics)) {
+      metrics$train_metrics[[metric]] <- fun(model, valid = TRUE)
+    }
+    
+    # calculate cv metrics
+    if (!is.null(model@model$cross_validation_metrics@metrics)) {
+      metrics$cv_metrics[[metric]] <- fun(model, xval = TRUE)
     }
     return(metrics)
   }
   
-  # calculate metrics
-  metrics <- metric_fun(h2o::h2o.r2   , "r2")
-  metrics <- metric_fun(h2o::h2o.mse  , "mse")
-  metrics <- metric_fun(h2o::h2o.rmse , "rmse")
-  metrics <- metric_fun(h2o::h2o.rmsle, "rmsle")
-  metrics <- metric_fun(h2o::h2o.mae  , "mae")
+  # calculate metrics for all model types
+  metrics <- metric_fun(h2o::h2o.r2  , "r2")
+  metrics <- metric_fun(h2o::h2o.mse , "mse")
+  metrics <- metric_fun(h2o::h2o.rmse, "rmse")
+  
+  # calculate extra metrics if regression
+  if (model_type == "regression") {
+    metrics <- metric_fun(h2o::h2o.rmsle                 , "rmsle")
+    metrics <- metric_fun(h2o::h2o.mae                   , "mae")
+    metrics <- metric_fun(h2o::h2o.mean_residual_deviance, "mean_residual_dev")
+  }
+  
+  # calculate extra metrics if classification
+  if (grepl("classification", model_type)) {
+    metrics <- metric_fun(h2o::h2o.mean_per_class_error, "mean_class_err")
+    metrics <- metric_fun(h2o::h2o.logloss             , "logloss")
+  }  
   
   # calculate extra metrics if binomial classification
-  if (model_info$is_classification & !model_info$is_multinomial_classification) {
+  if (model_type == "binomial classification") {
     metrics <- metric_fun(h2o::h2o.giniCoef          , "gini_coef")
     metrics <- metric_fun(h2o::h2o.mcc               , "mcc")
     metrics <- metric_fun(h2o::h2o.F1                , "f1")
     metrics <- metric_fun(h2o::h2o.F0point5          , "f0point5")
     metrics <- metric_fun(h2o::h2o.F2                , "f2")
     metrics <- metric_fun(h2o::h2o.accuracy          , "accuracy")
-    metrics <- metric_fun(h2o::h2o.logloss           , "logloss")
     metrics <- metric_fun(h2o::h2o.auc               , "auc")
     metrics <- metric_fun(h2o::h2o.aucpr             , "aucpr")
     metrics <- metric_fun(h2o::h2o.kolmogorov_smirnov, "ks")
   }
   
-  if ("fold" %in% names(data)) {
-    
-    # separate data into different folds
-    folds <- unique(data$fold) 
-    data_fold <- rep(list(NULL), length(folds))
-    for (i in folds) {
-      data_fold[[i]] <- h2o::as.h2o(data[fold != i])
-    }
-    
-    # functions to calculate average metric across all folds
-    metric_cv <- function(data) {
-      perf <- h2o::h2o.performance(model, data)
-      fun(perf)
-    }
-    metric_fun <- function(fun, metric) {
-      metrics$cv_metrics[[metric]] <- mean(sapply(data_fold, metric_cv))
-      return(metrics)
-    }
-    
-    
-    # calculate cv metrics
-    metrics <- metric_fun(h2o::h2o.r2   , "r2")
-    metrics <- metric_fun(h2o::h2o.mse  , "mse")
-    metrics <- metric_fun(h2o::h2o.rmse , "rmse")
-    metrics <- metric_fun(h2o::h2o.rmsle, "rmsle")
-    metrics <- metric_fun(h2o::h2o.mae  , "mae")
-    
-    # calculate extra metrics if binomial classification
-    if (model_info$is_classification & !model_info$is_multinomial_classification) {
-      metrics <- metric_fun(h2o::h2o.giniCoef          , "gini_coef")
-      metrics <- metric_fun(h2o::h2o.mcc               , "mcc")
-      metrics <- metric_fun(h2o::h2o.F1                , "f1")
-      metrics <- metric_fun(h2o::h2o.F0point5          , "f0point5")
-      metrics <- metric_fun(h2o::h2o.F2                , "f2")
-      metrics <- metric_fun(h2o::h2o.accuracy          , "accuracy")
-      metrics <- metric_fun(h2o::h2o.logloss           , "logloss")
-      metrics <- metric_fun(h2o::h2o.auc               , "auc")
-      metrics <- metric_fun(h2o::h2o.aucpr             , "aucpr")
-      metrics <- metric_fun(h2o::h2o.kolmogorov_smirnov, "ks")
+   
+  # calculate metrics for holdout dataset 
+  if ("data_id" %in% names(data)) {
+    if ("holdout" %in% data[["data_id"]]) {
+      
+      # calculate performance object for each data type
+      holdout_perf <- h2o::h2o.performance(model, h2o::as.h2o(data[data_id == "holdout"]))
+
+      # function to calculate holdout metric 
+      metric_fun <- function(fun, metric) {
+        metrics[["holdout_metrics"]][[metric]] <- fun(holdout_perf) 
+        return(metrics)
+      }
+      
+      # calculate metrics
+      metrics <- metric_fun(h2o::h2o.r2   , "r2")
+      metrics <- metric_fun(h2o::h2o.mse  , "mse")
+      metrics <- metric_fun(h2o::h2o.rmse , "rmse")
+      
+      # calculate extra metrics if regression
+      if (model_type == "regression") {
+        metrics <- metric_fun(h2o::h2o.rmsle                 , "rmsle")
+        metrics <- metric_fun(h2o::h2o.mae                   , "mae")
+        metrics <- metric_fun(h2o::h2o.mean_residual_deviance, "mean_residual_dev")
+      }
+      
+      # calculate extra metrics if classification
+      if (grepl("classification", model_type)) {
+        metrics <- metric_fun(h2o::h2o.mean_per_class_error, "mean_class_err")
+        metrics <- metric_fun(h2o::h2o.logloss             , "logloss")
+      }
+      
+      # calculate extra metrics if binomial classification
+      if (model_type == "binomial classification") {
+        metrics <- metric_fun(h2o::h2o.giniCoef          , "gini_coef")
+        metrics <- metric_fun(h2o::h2o.mcc               , "mcc")
+        metrics <- metric_fun(h2o::h2o.F1                , "f1")
+        metrics <- metric_fun(h2o::h2o.F0point5          , "f0point5")
+        metrics <- metric_fun(h2o::h2o.F2                , "f2")
+        metrics <- metric_fun(h2o::h2o.accuracy          , "accuracy")
+        metrics <- metric_fun(h2o::h2o.auc               , "auc")
+        metrics <- metric_fun(h2o::h2o.aucpr             , "aucpr")
+        metrics <- metric_fun(h2o::h2o.kolmogorov_smirnov, "ks")
+      }    
     }
   }
   

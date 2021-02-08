@@ -138,28 +138,32 @@ validate_nano <- function(x) {
     )
   }
   
-  if (len(values$varimp) != 0 & !all(lapply(values$varimp, function(x) class(x)[1])[1:values$n_model] == "list")) {
+  index <- !sapply(values$varimp, is.logical)
+  if (len(values$varimp) != 0 & !all(lapply(values$varimp[index], function(x) class(x)[1]) == "data.table")) {
     stop(
       "All `varimp` values must be data.table class",
       call. = FALSE
     )
   }
   
-  if (len(values$pdp) != 0 & !all(lapply(values$pdp, function(x) class(x)[1])[1:values$n_model] == "list")) {
+  index <- !sapply(values$pdp, is.logical)
+  if (len(values$pdp) != 0 & !all(lapply(values$pdp[index], function(x) class(x)[1]) == "data.table")) {
     stop(
       "All `pdp` values must be data.table class",
       call. = FALSE
     )
   }
 
-  if (len(values$ice) != 0 & !all(lapply(values$ice, function(x) class(x)[1])[1:values$n_model] == "list")) {
+  index <- !sapply(values$ice, is.logical)
+  if (len(values$ice) != 0 & !all(lapply(values$ice[index], function(x) class(x)[1]) == "data.table")) {
     stop(
       "All `ice` values must be data.table class",
       call. = FALSE
     )
   }
     
-  if (len(values$interaction) != 0 & !all(lapply(values$interaction, function(x) class(x)[1])[1:values$n_model] == "list")) {
+  index <- !sapply(values$interaction, is.logical)
+  if (len(values$interaction) != 0 & !all(lapply(values$interaction[index], function(x) class(x)[1]) == "data.table")) {
     stop(
       "All `interaction` values must be data.table class",
       call. = FALSE

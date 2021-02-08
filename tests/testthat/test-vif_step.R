@@ -36,7 +36,7 @@ test_that("correct output for remove = FALSE", {
 
 vif <- vif_step(data, ignore = ignore, thresh = 1.5, trace = TRUE, remove = TRUE)
 test_that("variables are correctly ignored", {
-  expect_equal(all(ignore %in% vif$vif$var), TRUE)
+  expect_equal(all(ignore %in% names(vif$data)), TRUE)
 })
 
 test_that("variables are correctly removed", {

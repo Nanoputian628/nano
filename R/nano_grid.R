@@ -46,12 +46,17 @@
 #' @param alarm a logical. Whether to beep when function has finished running.
 #' @param quiet a logical. Whether to print messages to the console.
 #' @param seed a numeric.
+#' @param grid_description a character. Optional description of grid. Can be later accessed by
+#' \code{nano$grid[[grid_no]]@meta$description}. 
+#' @param ... further parameters to pass to \code{h2o.grid} depending on `algo`.
 #' @return nano object with new entry filled with grid produced. 
 #' @details This function used `H2O`'s \code{h2o.grid} function to easily and quickly build
 #' difference machine learning models and perform grid search for hyper-parameter tuning. To
 #' perform hyper-parameter tuning, input the desired hyper-parameters in the `hyper_params`
-#' argument and set the range of values to build the models on. For more details, please see 
-#' the documentation for \code{h2o.grid}.
+#' argument and set the range of values to build the models on. Importantly, an active H2O 
+#' connection is required (i.e. run \code{h2o.init()})) before using this function. 
+#' 
+#' For more details, please see the documentation for \code{h2o.grid}.
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
@@ -95,9 +100,9 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
                        nfolds = NA, thresh = 10, monotone_constraints = c(), 
                        hyper_params = NULL, strategy = "RandomDiscrete", max_models = 10, 
                        max_runtime_secs = 60 * 10, stopping_metric = NULL,
-                       stopping_tolerance = NULL, stopping_rounds = NULL, plots = TRUE, 
+                       stopping_tolerance = 0, stopping_rounds = 0, plots = TRUE, 
                        alarm = TRUE, quiet = FALSE, save = FALSE, subdir = NA,
-                       project = "ML Project", seed = 628, ...) {
+                       project = "ML Project", seed = 628, grid_description = "", ...) {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 
@@ -119,8 +124,8 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
          call. = FALSE)
   }
   
-  if (!is.na(train_test) & !all(c("train", "test") %in% data[[train_test]])) {
-    stop("`train_test` column must contain the values `train` and `test`.",
+  if (!is.na(train_test) & !all(unique(data[[train_test]]) %in% c("train", "test", "holdout"))) {
+    stop("`train_test` column must contain the values `train`, `test` or `holdout`.",
          call. = FALSE)
   }
   
@@ -131,6 +136,11 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   
   if (!all(names(monotone_constraints) %in% names(data))){
     stop("Names of `monotone_constraints` must be variables in `data`.",
+         call. = FALSE)
+  }
+  
+  if (!is.character(grid_description)) {
+    stop("`grid_description` must be character type.",
          call. = FALSE)
   }
   
@@ -149,7 +159,7 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   if (missing(test)) test <- NA
   
   # split data in training and testing
-  train <- data.table::as.data.table(data)
+  train <- data.table::copy(data.table::as.data.table(data))
   if (!is.na(train_test)) {
     train <- data[get(train_test) == "train"]
     test  <- data[get(train_test) == "test"]
@@ -170,47 +180,61 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
                    if (!missing(weight_column)) weight_column,
                    if (!missing(fold_column))   fold_column)
   
-  # create list of search conditions
-  search_criteria = list(strategy           = strategy,
-                         max_models         = max_models,
-                         max_runtime_secs   = max_runtime_secs,
-                         stopping_metric    = stopping_metric,
-                         stopping_tolerance = stopping_tolerance,
-                         stopping_rounds    = stopping_rounds)
-  # remove null values
-  search_criteria <- search_criteria[!sapply(search_criteria, is.null)]
-  
   # determine type of model
   res_levels <- unique(train[[which(colnames(train) == response)]])
   model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
   if (!quiet) message("MODEL TYPE: ", model_type)
   
-
+  # default stopping metric
+  if (is.null(stopping_metric)) {
+    if (model_type == "Regression") {
+      stopping_metric = "deviance"
+    } else {
+      stopping_metric = "logloss"
+    }
+  }
+  
+  # search criteria
+  if (strategy == "Cartesian") {
+    max_models       = NULL
+    max_runtime_secs = NULL
+  }
+  search_criteria <- list(strategy         = strategy,
+                          max_models       = max_models,
+                          max_runtime_secs = max_runtime_secs)
+  search_criteria <- search_criteria[!sapply(search_criteria, is.null)]
+  
+  
   if (!quiet) 
     message(sprintf(">>> Iterating until %s models or %s seconds...", 
                     max_models, max_runtime_secs))
   
+
   
   # fit models
   params <- list(...)
   grid <- do.call(h2o::h2o.grid, c(list(x = setdiff(names(train), c(response, ignore_vars)),
                                         y                    = response,
                                         algorithm            = algo,
-                                        grid_id              = grid_id,
-                                        search_criteria      = search_criteria,
+                                        grid_id              = grid_id, 
                                         training_frame       = nano:::quiet(as.h2o(train)),
+                                        search_criteria      = search_criteria,
+                                        stopping_tolerance   = stopping_tolerance,
+                                        stopping_rounds      = stopping_rounds,
+                                        stopping_metric      = stopping_metric,
                                         seed                 = seed),
                                    list(validation_frame     = nano:::quiet(h2o::as.h2o(test)))[data.table::is.data.table(test)],
                                    list(weights_column       = weight_column)[!is.null(weight_column)],
                                    list(hyper_params         = hyper_params)[!is.null(hyper_params)],
                                    list(fold_column          = fold_column)[!is.null(fold_column)],
-                                   list(monotone_constraints = monotone_constraints)[!is.null(monotone_constraints)]))
+                                   list(monotone_constraints = monotone_constraints)[!is.null(monotone_constraints)],
+                                   params[length(params) > 0]
+                                   ))
   
   
 
   # sort the grid models by metric and select best model
-  metric <- if (is.null(stopping_metric)) "mse" else stopping_metric
-  grid <- h2o.getGrid(grid_id, sort_by = metric, decreasing = FALSE)
+  grid <- h2o.getGrid(grid_id, decreasing = FALSE)
   
   # print leaderboard
   if (nrow(grid@summary_table) == 0) {
@@ -219,13 +243,13 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
       if (!quiet) {
         message(paste("- EUREKA: Succesfully generated", 
                       nrow(grid@summary_table), "models"))
-        if (!quiet) print(head(grid@summary_table, 3))
+        if (!quiet) print(head(grid@summary_table, 10))
       }
   }
   
   
   # recreate dataset to input into nano object
-  if (missing(train_test)) {
+  if (missing(train_test) & !"data_id" %in% names(data)) {
     # is train_test column is not specified, create data_id column 
     # and combine datasets together 
     train[, data_id := "train"]
@@ -238,6 +262,9 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
     if (!"data_id" %in% names(data)) {
       # rename train_test to data_id for consistency
       names(data)[names(data) == train_test] <- "data_id" 
+      if (!quiet) {
+        message(paste0("Renamed ", train_test, "to data_id."))
+      }
     }
   }
   
@@ -245,7 +272,9 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   if (!missing(fold_column)) {
     if (fold_column != "fold") {
       names(data)[names(data) == fold_column] <- "fold" 
-      message("Renaming ", fold_column, "to fold.")
+      if (!quiet) {
+        message("Renaming ", fold_column, "to fold.")
+      }
     }
   }
   
@@ -258,6 +287,8 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   nano$data[[nano$n_model]]   <- data
   nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
+  nano$grid[[nano$n_model]]@meta$description <- grid_description
+  
   # if (!is.null(hyper_params)) {
   #   nano$grid[[paste0("grid_", nano$n_model)]]@meta$tune_hyper_params <- hyper_params
   # }

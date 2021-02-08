@@ -7,8 +7,8 @@
 nano_metrics(
   nano,
   model_no = nano$n_model,
-  metrics,
   data_type = "train",
+  metrics,
   plot = FALSE
 )
 }
@@ -17,9 +17,9 @@ nano_metrics(
 
 \item{model_no}{a numeric. Vector of model numbers to calculate metrics from.}
 
-\item{metrics}{a character. Vector of metrics to be calculated.}
-
 \item{data_type}{a character. From which data source to calculate metrics from. Can take values: "train", "test", "cv" or "holdout".}
+
+\item{metrics}{a character. Vector of metrics to be calculated.}
 
 \item{plot}{a logical. Whether to output plots.}
 }

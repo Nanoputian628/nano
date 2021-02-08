@@ -27,6 +27,8 @@ nano_automl(
   subdir = NA,
   project = "ML Project",
   seed = 628,
+  project_name = paste0("grid_", nano$n_model + 1),
+  grid_description = "",
   ...
 )
 }
@@ -67,6 +69,10 @@ however it cannot contain the values "test".}
 \item{thresh}{a numeric. Cutoff of number of unique values in response variable to
 determine whether performing classification or regression. Default value is 10.}
 
+\item{monotone_constraints}{a list. Mapping between variable names in \code{data} to values
++1 or -1. Use +1 to enforce an increasing constraint while use -1 for a decreasing
+constraint. Constraints are only valid for numerical columns.}
+
 \item{exclude_algos}{a vector of characters. Algorithms which should be excluding from
 training process.}
 
@@ -81,6 +87,11 @@ only \code{include_algos} will be used.}
 \item{quiet}{a logical. Whether to print messages to the console.}
 
 \item{seed}{a numeric.}
+
+\item{grid_description}{a character. Optional description of grid. Can be later accessed by
+\code{nano$grid[[grid_no]]@meta$description}.}
+
+\item{...}{further parameters to pass to \code{h2o.grid} depending on \code{algo}.}
 }
 \value{
 nano object with new entry filled with models produced.
@@ -91,8 +102,10 @@ implemented with \code{nano} objects.
 }
 \details{
 This function used \code{H2O}'s \code{h2o.automl} function to easily and quickly build
-several different machine learning models. For more details, please see the documentation
-for \code{h2o.automl}.
+several different machine learning models. Importantly, an active H2O connection is
+required (i.e. run \code{h2o.init()})) before using this function.
+
+For more details, please see the documentation for \code{h2o.automl}.
 }
 \examples{
 \dontrun{

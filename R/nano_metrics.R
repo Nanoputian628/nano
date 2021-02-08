@@ -14,7 +14,7 @@
 #' @export 
 
 
-nano_metrics <- function(nano, model_no = nano$n_model, metrics, data_type = "train", plot = FALSE) {
+nano_metrics <- function(nano, model_no = nano$n_model, data_type = "train", metrics, plot = FALSE) {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 
@@ -26,9 +26,11 @@ nano_metrics <- function(nano, model_no = nano$n_model, metrics, data_type = "tr
          call. = FALSE)
   }
   
-  if (!is.character(metrics)) {
-    stop("`metrics` must be a character.",
-         call. = FALSE)
+  if (!missing(metrics)) {
+    if (!is.character(metrics)) {
+      stop("`metrics` must be a character.",
+           call. = FALSE)
+    }
   }
   
   if (!data_type %in% c("train", "test", "cv", "holdout")) {
@@ -41,14 +43,24 @@ nano_metrics <- function(nano, model_no = nano$n_model, metrics, data_type = "tr
          call. = FALSE)
   }
   
+  # if missing metrics, default to all possible metrics
+  if (missing(metrics)) {
+    metrics <- names(nano$metric[[model_no[1]]][[paste0(data_type, "_metrics")]])
+    if (length(model_no) > 1) {
+      for (i in 2:length(model_no)) {
+        metrics <- intersect(metrics, names(nano$metric[[model_no[i]]][[paste0(data_type, "_metrics")]]))
+      }
+    }
+  }
+  
   met <- data.table::data.table()
   for (i in 1:length(model_no)) {
-    metric <- t(data.table::as.data.table(nano$metric[[model_no[i]]][[paste0(data_type, "_metrics")]][metrics]))
-    met <- cbind(met, metric)
-    names(met)[i] <- nano$model[[i]]@model_id
+    metric <- data.table::as.data.table(nano$metric[[model_no[i]]][[paste0(data_type, "_metrics")]][metrics])
+    metric[, model_id := nano$model[[model_no[i]]]@model_id]
+    met <- rbind(met, metric)
   }
-  met <- cbind(metrics, met)
-  
+  data.table::setcolorder(met, c("model_id", metrics))
+
   return(met)
   
   
