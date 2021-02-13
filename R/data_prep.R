@@ -201,7 +201,7 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
       blank_var <- names(clean_smry$blanks)[clean_smry$blanks > 0]
       cat("The following variables have blank values:\n")
       for (i in 1:length(blank_var)) {
-        cat(paste0(" ", blank_var[i], ": ", clean_smry$blanks[i], "\n"))
+        cat(paste0(" ", blank_var[i], ": ", clean_smry$blanks[names(clean_smry$blanks) == blank_var[i]], "\n"))
       }
     } 
     
@@ -210,16 +210,16 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
       na_var <- names(clean_smry$nas)[clean_smry$nas > 0]
       cat("The following variables have NAs:\n")
       for (i in 1:length(na_var)) {
-        cat(" ", paste0(na_var[i], ": ", clean_smry$nas[i], "\n"))
+        cat(" ", paste0(na_var[i], ": ", clean_smry$nas[names(clean_smry$nas) == na_var[i]], "\n"))
       }
     } 
     
     # message for variables which have special characters
     if (sum(clean_smry$special_chars) > 0) {
       special_var <- names(clean_smry$special_chars)[clean_smry$special_chars > 0]
-      cat("The following variables have NAs:\n")
+      cat("The following variables have special characters:\n")
       for (i in 1:length(special_var)) {
-        cat(paste0(" ", special_var[i], ": ", clean_smry$special_chars[i], "\n"))
+        cat(paste0(" ", special_var[i], ": ", clean_smry$special_chars[names(clean_smry$special_chars) == special_var[i]], "\n"))
       }
     }
   }

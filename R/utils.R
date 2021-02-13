@@ -247,6 +247,7 @@ model_meta <- function(model, data) {
                                                   "col_sample_rate",
                                                   "col_sample_rate_per_tree",
                                                   "min_split_improvement")]
+  meta[["hyper_params"]] <- meta[["hyper_params"]][!sapply(meta[["hyper_params"]], is.null)]
   meta[["search_conditions"]] <- model@allparameters[c("stopping_rounds", "stopping_metric", "stopping_tolerance")]
   meta[["max_runtime_secs"]] <- model@allparameters$max_runtime_secs
   meta[["seed"]] <- model@allparameters$seed

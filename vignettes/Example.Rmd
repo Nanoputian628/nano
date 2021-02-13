@@ -1,9 +1,9 @@
 ---
-title: "Nano Example - Modelling Property Prices"
+title: "Modelling Property Prices"
 author: "Dilshan Wijesena"
 date: "01/31/2021"
 output: 
-  bookdown::pdf_document2:
+  bookdown::html_document2:
     toc: yes
     toc_depth: '3'
     number_sections: yes
@@ -13,21 +13,21 @@ header-includes:
 ---
 
 
-```{r set up, echo = FALSE, message = FALSE, warning = FALSE, error = FALSE}
+```{r set up, message = FALSE, warning = FALSE, error = FALSE}
 
-pack_names <- c("nano",
-                "skimr",
-                "plotly",
-                "gridExtra",
-                "h2o",
-                "kableExtra",
-                "bookdown")
+# load libraries
+library(nano)
+library(data.table)
+library(plotly)
+library(h2o)
+library(kableExtra)
+library(bookdown)
 
-pack_names <- pack_names[!(pack_names %in% installed.packages()[, "Package"])]
-if (length(pack_names)) install.packages(pack_names)
-
+# response variable
 response <- "sale_price"
 
+# directory to save final nano object
+path <- "C:/Users/dilsh/Documents/R Packages/nano/vignettes/Nano objects"
 
 ```
 
@@ -36,7 +36,7 @@ response <- "sale_price"
 \newpage
 
 # Introduction
-The purpose of this article is to illustrate the functionality of the `nano` package. As an illustrative example, we shall build a machine learning model to predict Sydney property prices using the `property_prices_unclean` dataset from the `nano` package. This dataset is based on the `SydneyRealEstate` dataset provided by Ruppert and Wand (2018). Random entries in the original dataset have been removed or replaced with \code{NA}s and outliers to simulate an unclean dataset.  
+The purpose of this article is to illustrate the functionality of the `nano` package. As an illustrative example, we shall build a machine learning model to predict Sydney property prices using the `property_prices_unclean` dataset from the `nano` package. This dataset is based on the `SydneyRealEstate` dataset provided by Ruppert and Wand (2018). Entries in the original clean dataset have been randomly removed or replaced with NAs and outliers to simulate an unclean dataset.  
 
 The first section of the report demonstrates the functions available to automate the data preparation and visualisation process. Then the power of the `nano` objects will be shown in how to easily create a wide variety of machine learning models and compare them. Lastly, a wide variety of techniques will be implemented to help understand the model's prediction mechanism and evaluate its performance on an unseen dataset. 
 
@@ -45,33 +45,32 @@ The first section of the report demonstrates the functions available to automate
 
 ## Read in Data and Perform Checks
 
-Load unclean dataset and randomly subset 2,000 rows to reduce computational run time. The `skim` function from the `skimr` package provides a quick but detailed summary for each variable. It can be seen that the variables sale_qtr, dist_to_rail_line, dist_to_rail_station, dist_to_sealed_road, dist_to_unsealed_road, NO2, dist_to_university and sale_price are missing values. As well, it appears dist_to_unsealed_road and air_noise have possible outliers with maximum values of 999,999. Further, sale_price has a highly positively skewed distribution as expected. 
+Load unclean dataset and randomly subset 2,000 rows to reduce computational run time. The `skim` function from the `skimr` package provides a quick but detailed summary for each variable. It can be seen that the variables: sale_qtr, dist_to_rail_line, dist_to_rail_station, dist_to_sealed_road, dist_to_unsealed_road, NO2, dist_to_university and sale_price are missing values. As well, it appears dist_to_unsealed_road and air_noise have possible outliers with maximum values of 999,999. 
 
-```{r read in data, echo = FALSE, message = FALSE, error = FALSE}
+```{r read in data, message = FALSE, error = FALSE}
 
 # load data
 data("property_prices_unclean")
-data <- data.table::copy(property_prices_unclean)
+data <- property_prices_unclean
 rm(property_prices_unclean)
 
 # select 2,000 rows
 set.seed(2020)
 data <- data[sample(nrow(data), 2000)]
 
-
-# check data - see Appendix A for output
-head(data, 5) # no issues
-tail(data, 5) # no issues
-skimr::skim(data) #several variables have a few missing values and possible data entry errors
+# check data
+head(data[, 1:6], 5) # no issues
+tail(data[, 1:6], 5) # no issues
+skimr::skim_without_charts(data) # several variables have a few missing values and possible data entry errors
 
 ```
 
 
-## Data Cleaning 
+## General Data Cleaning 
 
-The `tidy_data` function performs general cleaning of dataset. All character variables are converted to factor types. Variables with low number of unique levels (less than `thresh`) are converted to factor types as well. Further, it removes all entries with missing values in the response variable.
+The `tidy_data` function performs general cleaning of dataset. All character variables and variables with low number of unique levels (less than `thresh`) are converted to factor types as well. Further, it removes all entries with missing values in the response variable.
 
-```{r data cleaning, message = FALSE, error = FALSE}
+```{r data cleaning, error = FALSE}
 
 # general cleaning of data
 data <- nano::tidy_data(data         = data, 
@@ -84,61 +83,63 @@ data <- nano::tidy_data(data         = data,
 As can be seen from the above output messages, 4 entries were removed due to missing values in the response variable, sale_price. Further sale_date, rtm where converted from character to factor type while sale_qtr was correctly converted from numeric to factor type. 
 
 
-## Stepwise VIF Selection {#Correlation}
+## Stepwise VIF Selection {#VIF}
 
 Collinearity between variables is an important issue to identify before beginning the modelling process. The presence of collinearity introduces additional uncertainty in the model fitting process and result in higher variance models (Kuhn & Johnson 2013). Kuhn and Johnson (2013) proposes the use of the VIF measure to identify collinearity and remove variables with a VIF greater than a pre-defined threshold. Kuhn and Johnson (2013) notes this method does indeed result in significant improvement in model performance. 
 
-The approach recommended approach is implemented by the `vif_step` function. This function calculates the VIF for each variable and then removes the variable with the highest VIF if it is above a certain threshold. This process is then repeated until all variables have a VIF lower than the threshold. If there are certain variables which are known to be required for the modelling process, these can be ignored by using the `ignore` argument. 
+The approach recommended above is implemented by the `vif_step` function. This function calculates the VIF for each variable and then removes the variable with the highest VIF if it is above a certain threshold. This process is then repeated until all variables have a VIF lower than the threshold. If there are certain variables which are known to be required for the modelling process, these can be ignored by using the `ignore` argument. 
 
-Initially, the `remove` argument is set to \code{FALSE} to view the VIFs for each variable. This can reveal which variables are likely to removed by the process. If any of these variables are desired to be kept, the function can be run again with \code{remove = TRUE} and the desired variables can be specified in the `ignore` argument. 
+Initially, the `remove` argument is set to `FALSE` to view the VIFs for each variable. This can reveal which variables are likely to removed by the process. If any of these variables are desired to be kept, the function can be run again with `remove = TRUE` specifying the desired variables in the `ignore` argument. Specifying `trace = TRUE` will show the VIFs for each variable after each iteration and will print out which variable is removed (if removed).
 
 
-```{r correlation, echo = FALSE, message = FALSE, out.width="50%", fig.align = "center", fig.cap = "Pairwise correlation plot of numeric variables in dataset to identify collinearity."}
+```{r vif step}
 
-# run initial without removal to see VIF for all variables
-data_vif_init <- nano::vif_step(data   = data, 
-                                ignore = c(response), 
-                                remove = FALSE)
+vif_init <- nano::vif_step(data   = data, 
+                           ignore = c(response), 
+                           thresh = 5, 
+                           remove = FALSE,
+                           trace  = TRUE)
 
 data_vif <- nano::vif_step(data   = data, 
                            ignore = c(response, "crime_rate", "latitude", 
                                       "longitude", "dist_to_rail_station"), 
                            thresh = 5, 
                            remove = TRUE,
-                           trace  = TRUE)
+                           trace  = FALSE)
 data <- data.table::copy(data_vif$data)
-
 
 ```
 
 
 ## Impute Data
 
-The `cleanliness_smry` function return a list containing a detailed summary on how clean the dataset is. It provides information on: NAs, blanks, outliers, duplicates and special character. Outliers are determined by calculating how many standard deviations each value is from the mean and if it is greater than `outlier_sd`. Patterns in missing values can be identified using the `missing_pattern` function. This can be used to identify whether missing values are random, non-informative or informative.  
+The `cleanliness_smry` function returns a list containing a detailed summary on how clean the dataset is. It provides information on: NAs, blanks, outliers, duplicates and special character. Outliers are determined by calculating how many standard deviations each value is from the mean and if it is greater than `outlier_sd`. Patterns in missing values can be identified using the `missing_pattern` function. This can be used to identify whether missing values are random, non-informative or informative.  
 
-Using the information produced from the `cleanliness_smry` function, the `impute` function can be used to impute missing values. There are two methods available for imputing values. Values can be simply imputed with their mean/mode (depending if numeric or factor type). Or the MICE method can be implemented which calculates multivariable imputations by using chained equations. This method is derived from the `mice` package.  
+Using the information produced from the `cleanliness_smry` function, the `impute` function can be used to impute missing values. There are two methods available for imputing values. Values can be simply imputed with their mean/mode (depending if numeric or factor type), or the MICE method can be implemented which calculates multivariable imputations by using chained equations. This method is derived from the `mice` package.  
 
-Similarly to the `vif_step` function, variables which are not desired to be imputed can be specified by the `impute_ignore` argument. As well, outliers can be imputed using the `impute_outlier` argument. The argument can be set to \code{Inf} if outliers are not desired to be imputed.  
+Similarly to the `vif_step` function, variables which are not desired to be imputed can be specified by the `impute_ignore` argument. As well, outliers can be imputed using the `impute_outlier` argument. The argument can be set to `Inf` if outliers are not desired to be imputed.  
 
 
-```{r imputation, echo = FALSE, message = FALSE}
+```{r missing summary, warnings = FALSE, error = FALSE, results = "hide"}
 
 # missing summary
 data_missing_smry <- nano::cleanliness_smry(data       = data, 
                                             ignore     = c(response),
                                             outlier_sd = 10)
-data <- data.table::copy(data_missing_smry$unique_rows) # remove duplicates
+```
 
-data_missing_smry$missing_smry
-data_missing_smry$outliers 
-data_missing_smry$outlier_rows # only true outliers are in air_noise and dist_to_unsealed_road, other seem reasonable
-data_missing_smry$special_chars # all belong to sale_date as expected
+```{r imputation, warning = FALSE, message = FALSE, error = FALSE}
+
+data <- data.table::copy(data_missing_smry$unique_rows) # remove duplicates
+data_missing_smry$missing_smry # summary of blanks and NAs
+
+head(data_missing_smry$outlier_rows[, 1:6]) # only true outliers are in air_noise and dist_to_unsealed_road
 
 # identify any missing patterns
 data_missing_pat <- nano::missing_pattern(data   = data,
                                           ignore = c(response),
                                           plot   = FALSE)
-data_missing_pat$plot() # no pattern to missing
+data_missing_pat$plot() # no pattern to missing observations
 
 # impute missing values and outliers
 data_impute <- nano::impute(data           = data, 
@@ -147,11 +148,6 @@ data_impute <- nano::impute(data           = data,
                                                "dist_to_school", "dist_to_medical"),
                             pred_ignore    = c(response),
                             impute_outlier = 10)
-
-# check imputed data
-data_missing_smry <- nano::cleanliness_smry(data_impute$imputed_data, 
-                                            ignore     = c(response),
-                                            outlier_sd = Inf)
 # save final dataset
 data_fin <- data.table::copy(data_impute$imputed_data)
 
@@ -163,13 +159,10 @@ data_fin <- data.table::copy(data_impute$imputed_data)
 
 All the above functions can be implemented by the single function `data_prep`. Further, this function automatically removes variables with low variables, balances and scales data, and provides splits into training, testing, holdout and folds for cross-validation. 
 
-It is recommended to run the `data_prep` function rather than the separate functions. This is because the `data_prep` function applies each of the methods on the training dataset separately and then replicates the same method on the testing/holdout dataset. For example, imputation is initially based only on the trainin dataset. Then the same imputation method is applied on the testing/holdout dataset. This is to avoid data leakage which is a key issue in modelling.   
+It is recommended to run the `data_prep` function rather than the separate functions. This is because the `data_prep` function applies each of the methods on the training dataset separately and then replicates the same method on the testing/holdout dataset. For example, imputation is initially based only on the training dataset. Then the same imputation method is applied on the testing/holdout dataset. This is to avoid data leakage.   
 
 
-```{r data_prep, echo = FALSE, message = FALSE}
-
-# Or instead can perform all the above functions using the single data_prep function, 
-# which also have extra functionality such as segmenting data for train/test/holdout/cv
+```{r data_prep, warning = FALSE, error = FALSE, cache = TRUE}
 
 data("property_prices_unclean")
 data_ex <- data.table::copy(property_prices_unclean)
@@ -194,9 +187,8 @@ data_process <- nano::data_prep(data          = data_ex,
                                                   "dist_to_school", "sale_date"),
                                 pred_ignore   = c(response),
                                 vif_select    = TRUE,
-                                vif_ignore    = unique(c(response, "crime_rate", 
-                                                         "latitude", "longitude", "sale_qtr",
-                                                         "dist_to_rail_station")), 
+                                vif_ignore    = unique(c(response, "crime_rate", "latitude", 
+                                                         "longitude", "sale_qtr", "dist_to_rail_station")), 
                                 vif_thresh    = 5,
                                 thresh        = 6,
                                 balance       = FALSE,
@@ -208,7 +200,6 @@ data_ex_impute <- nano::impute(data           = data_process$data,
                                method         = "mice",
                                pred_ignore    = c(response),
                                impute_outlier = Inf)
-
 # missing summary
 data_ex_missing_smry <- nano::cleanliness_smry(data       = data_ex_impute$imputed_data, 
                                                ignore     = c(response),
@@ -216,18 +207,15 @@ data_ex_missing_smry <- nano::cleanliness_smry(data       = data_ex_impute$imput
 # no missing values, save final dataset
 data <- data.table::copy(data_ex_impute$imputed_data)
 
-# convert SO2 back to numeric type and convert sale_date to date type
-data[, SO2 := as.numeric(as.character(SO2))
-     ][, sale_date := as.Date(as.character(sale_date), "%d/%m/%Y")]
-
-# extract weekday from sale_date
-data[, wday := as.factor(as.character(lubridate::wday(sale_date, label = TRUE)))]
+# convert sale_date to date type and extract weekday from sale_date
+data[, sale_date := as.Date(as.character(sale_date), "%d/%m/%Y")
+     ][, wday := as.factor(as.character(lubridate::wday(sale_date, label = TRUE)))]
 
 
 ```
 
 
-```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height=3, fig.cap = "Distribution of sal_price in training and holdout dataset. Left: training dataset. Right: holdout dataset."}
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height=3, fig.align = "center", fig.cap = "Distribution of sale_price in training and holdout dataset. Left: training dataset. Right: holdout dataset."}
 
 # compare plots to confirm balanced data
 # remove zero values and filter dataset to better see the histogram
@@ -247,23 +235,38 @@ gridExtra::grid.arrange(p1, p2, nrow = 1) # plots are very similar as expected
 
 # Exploratory Data Analysis {#EDA} 
 
-Brief data exploration was performed to develop an initial expectation of the relationship between the predictors and the response variable. These expectations are then later compared in the model checking and assessment section to ensure the final selected model produces predictions that matches our expectations. 
+Brief data exploration was performed to develop an initial expectation of the relationship between the predictors and the response variable. These expectations are then later compared when assessing the final select model (section \@ref(check)) to provide a basic sense check on the reasonableness of the model's prediction mechanism.
 
-In producing the plots, the variables are banded using the `band_data` function from the `nano` package. All plots are produced using the `plotly` package. A key advantage of plots produced by `plotly` compared to other package such as `ggplot` is their interactive features which allows for more informative and easier to view plots. 
+All plots are produced using the `plotly` package. A key advantage of plots produced by `plotly` compared to other package such as `ggplot` is their interactive features which allows for more informative and easier to view plots. Further, the package offers numerous types of visualisation methods with great flexibility in functionality. 
 
-```{r echo = FALSE, warning = FALSE, message=FALSE}
+The below plot shows the distribution of sale price in the training dataset. As expected, the distribution is strongly positive skewed, following perhaps a gamma or Tweedie distribution.  
+
+```{r echo = FALSE, warning = FALSE, message=FALSE, fig.align="center"}
 
 ## histogram of sale_price
-fig <- plot_ly(x = data$sale_price,
+fig <- plot_ly(x = data$sale_price[data$data_id == "train"],
                type = "histogram",
-               histnorm = "probability")
-fig
+               histnorm = "probability") %>% 
+  layout(title = "Distribution of Sale Price",
+         xaxis = list(title = response),
+         yaxis = list(title = "Frequency",
+                      hoverformat = ".2f"))
+htmltools::div(fig, align = "center")
+```
 
+Next, the numeric variables are banded using the `band_data` function from the `nano` package. From the banded variables, a series of one-way plots are produced below. These plots will have help provide us an insight on the relationships between the variables and the response. However, it is important to take care when interpreting one-ways since they may be influenced by spurious or confounding variables, resulting in misleading relationships. 
+
+* lot size - as lot size increases, there is a general increase in average sale price as expected.
+* crime rate - initially, as crime rate increases, there is a decrease in sale price. However, suprisingly as crime rate further increases, the sale price increases. This may be due to confounding variables. 
+* income - as income increases, sale price generally increases as expected. Note, the average sale price in the $[0,400)$ band is higher than the sale price in the $[400, 800)$ band. This may be due to retirees (hence $0$ or low income) or property investors (with low reported income) who are able to purchase more expensive properties. 
+* distance to railway station - as distance to closest railway station increases, sale price initially decreases, then increases. This may reflect offsetting advantage of convenience by being close to a railway station versus the disadvantage of being situated in a busy, crowded region. From the graph, it appears the advantages only outweighs the disadvantages for properties within a 2 km radius of a railway station. 
+
+```{r band data, warning = FALSE, message = FALSE}
 ## create bands
 # intervals for bands
-intervals <- list(lot_size             = seq(400, 2000, 400),
-                  crime_rate           = seq(0.1, 0.6, 0.1),
-                  income               = seq(0, 2000, 500),
+intervals <- list(lot_size             = seq(400, 2000, 200),
+                  crime_rate           = seq(0.1, 0.6, 0.05),
+                  income               = seq(0, 2000, 400),
                   dist_to_rail_station = seq(0, 10, 2),
                   foreigner_ratio      = seq(0, 1, 0.2),
                   NO                   = seq(0, 4, 1),
@@ -278,8 +281,7 @@ nano::band_data(data             = data_bnd,
 ```
 
 
-```{r echo = FALSE, warning = FALSE, message=FALSE, fig.height=3.5, fig.width = 7, fig.align="center", fig.cap = "Left: Blue bars show average pure premium by driver age band and orange points show number of counts per each band. Right: Blue bars show average pure premium by weight band and orange points show number of counts per each band."}
-
+```{r echo = FALSE, warning = FALSE, message=FALSE, fig.height = 2.5, fig.width = 5}
 
 # function summarise data by variable
 one_way_smry <- function(data, var, response) {
@@ -298,24 +300,33 @@ one_way_plot <- function(data, vars, response) {
   # plot one-way for each variable
   for (var in vars) {
     x <- one_way_smry(data, var, response)
-    
+
     # parameters for second axis
-    ay <- list(tickfont = list(color = "red"),
-               overlaying = "y",
-               side = "right",
-               title = "second y axis"
+    rhs <- list(tickfont = list(color = "red"),
+                overlaying = "y",
+                side       = "right",
+                title      = "Count",
+                rangemode = "tozero",
+                showgrid = FALSE
     )
 
     # initialise empty plot
     fig <- plotly::plot_ly() 
     # add first layer of plots - bar graph of mean sale_price
-    fig <- fig %>% add_bars(x = x[[1]], y = x$mean, name = paste0("Average ", var))
+    fig <- fig %>% add_bars(x = x[[1]], y = x$mean, name = paste0("Average ", response),
+                            yaxis = "y")
     # add second layer of plots - line graph of count (right y-axis)
-    fig <- fig %>% add_lines(x = x[[1]], y = x$count, name = paste0("Count of ", var), yaxis = "y2")
+    fig <- fig %>% add_lines(x = x[[1]], y = x$count, name = paste0("Count of ", var), 
+                             yaxis = "y2")
     # set layout so bar graph uses left axis and line graph uses right axis
     fig <- fig %>% layout(
-      title = "Double Y Axis", yaxis2 = ay,
-      xaxis = list(title="x")
+      title  = paste0(response, " vs ", var), 
+      yaxis2 = rhs,
+      xaxis  = list(title = var),
+      yaxis  = list(title = response,
+                    hoverformat = ",.2s"),
+      showlegend = FALSE,
+      margin = list(r = 40)
     )
     plots[[var]] <- fig
   }
@@ -326,21 +337,19 @@ one_way_plot <- function(data, vars, response) {
 one_ways <- one_way_plot(data     = data_bnd[data_id == "train"], 
                          vars     = names(intervals), 
                          response = "sale_price")
+
 one_ways$lot_size # increasing as expected
 one_ways$crime_rate # interestingly, higher sale prices in areas with higher crime rates. Maybe more crime (e.g. theft) due to more affluent area
 one_ways$income # strong relationship. Increasing as expected
 one_ways$dist_to_rail_station # decrease and then increase as expected
 #one_ways$foreigner_ratio # skewed by single observation in [0, 0.2)
-one_ways$NO # interestingly, increases. Perhaps more expensive properties in busy city areas which have higher NO levels
-one_ways$dist_to_university # generally decreasing
-
+#one_ways$NO # interestingly, increases. Perhaps more expensive properties in busy city areas which have higher NO levels
 
 ```
 
+The boxplot plot in figure 3.1 illustrates the distribution of sale price by each weekday. Interestingly, the least properties are bought during the weekend with Saturday having the lowest average sale price by far. Properties bought at the start or end of the week are sold for much higher prices. The plot on the right of figure 3.1 is a time series of the number of properties sold over the year 2001. The relatively straight line suggests there is no significant fluctuations in buyer's behavior during the year.  
 
-
-
-```{r echo = FALSE, warning = FALSE, fig.align="center", out.width="50%", fig.cap = "Box plot of pure premium by NCD level."}
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.cap = "Left: Box plot of sale price by weekday. Right: Time series of number of properties sold."}
 
 # fig1 <- plot_ly(data_bnd, 
 #                 y = ~sale_price, 
@@ -352,19 +361,15 @@ one_ways$dist_to_university # generally decreasing
 # fig1
 # 
 
-fig2 <- plot_ly(data_bnd, 
+fig1 <- plot_ly(data_bnd, 
                 y = ~sale_price, 
                 color = ~wday, 
                 type = "box",
                 boxpoints = "all", 
                 jitter = 0.1,
-                pointpos = -1.8)
-fig2
-
-```
-
-
-```{r echo = FALSE, warning = FALSE, fig.align="center", out.width="50%", fig.cap = "Time series of number of properties sold."}
+                pointpos = -1.8) %>% 
+  layout(showlegend = FALSE,
+         yaxis = list(hoverformat = ",.2s"))
 
 # sale_prices
 # fig1 <- plot_ly(data_bnd,
@@ -383,10 +388,11 @@ fig2 <- plot_ly(date,
                 x = ~sale_date, 
                 y = ~sold_num, 
                 mode = 'markers',
-                type = "scatter")
-fig2 # no pattern
+                type = "scatter",
+                name = "Properties sold") %>% 
+  layout(showlegend = FALSE)
 
-
+subplot(fig1, fig2, nrows = 1)
 
 ```
 
@@ -395,72 +401,97 @@ fig2 # no pattern
 
 ## Nano Object
 
-At the core of the `nano` package is the `nano` object. This is a S3 object which stores detailed information of all grids/models built including: grid and model information, metrics, variable importance, partial dependency plots (PDP), individual conditional expectations (ICE) and interaction plots. When a new grid is trained, the grid is appended to the `nano` object and various other important information are calculated. Other functions can then be used to populate the fields in the `nano` object (e.g. \code{nano_pdp} to calculate PDPs). 
+At the core of the `nano` package is the `nano` object. This is a S3 object which stores detailed information of all grids/models built. The `nano` object greatly simplifies and streamlines the modelling process as all grids and models are safely stored in the same location. This prevent cluttering of workspace and allows all previous information to be easily accessed. Further, it allows for powerful techniques to be used compare the model performance across different models. This is a feature which is not available in other packages (e.g. `DALEX` and `shapr`).
 
-The `nano` object greatly simplifies and streamlines the modelling process as all grids and models are safely stored in the same location. This prevent cluttering of workspace and allows all previous information to be easily accessed. Further, it allows for powerful techniques to be used compare the model performance across different models. This is a feature which is not available in other packages (e.g. `DALEX` and `shapr`).
+An empty `nano` object can be initialised by running the below code.
 
-## Modelling Process
+```{r first nano object, message = FALSE, warning = FALSE}
 
-The 5-fold cross-validation technique was used to evaluate the models built since it is an attractive approach for selecting from various models, especially in cases where the degrees of freedom cannot be calculated, as in tree-based models (James, Witten, Hastie & Tibshirani 2013). The average error across the 5 holdout folds was used as an estimate for the test error of the model. 
+nano <- nano::create_nano()
 
-For evaluating model performance, the residual deviance and MSE were the two main metrics used. Residual deviance provides information on the maximum likelihood and was chosen since it is a relatively robust metric against a variety of different distributions. MSE was chosen since it is sensitive to outliers which is desirable for predicting property prices since we do indeed wish to be able to accurately predict prices of high-end properties as well. For the remainder of the report, all metrics considered will be the cross-validation metrics (calculated by evaluating the metric on the holdout fold and then averaging across the 5 iterations) unless specified. 
+```
+
+Initially, a `nano` object holds 10 slots, one for each grid of models. When all the slots become populated, the number of slots will be automatically increased. Each slot contains 10 fields which are:
+
+* grid - grid of models built. Populated using the `nano_automl` or `nano_grid` function.
+* model - chosen model from corresponding grid (grid contained in the same slot). This field is populated by default with the best model in the grid. However, the model can be swapped with another model from the grid using the `switch_model` function. 
+* metric - the training, test. cross-validation and holdout metrics (whichever are relevant) for the corresponding model. This field is populated by default. The values can be extracted/plot using the `nano_metric` function. 
+* data - the dataset (stored as data.table) used to build the corresponding grid. This field is populated by default. 
+* varimp - the variable importance of the corresponding model. Initially, when a grid is built, this field will remain empty. To calculate/plot the variable importance, use the `nano_varimp` function.  
+* pdp -  the partial dependencies of the corresponding model. Initially, when a grid is built, this field will remain empty. To calculate/plot the partial dependencies, use the `nano_pdp` function. 
+* ice - the initial conditional expectations of the corresponding model. Initially, when a grid is built, this field will remain empty. To calculate/plot the ICE, use the `nano_ice` function. 
+* interaction - the pair-wise interaction value of the corresponding model. Initially, when a grid is built, this field will remain empty. To calculate/plot the ICE, use the `nano_interaction` function. 
+* meta - contains useful meta information about its corresponding model such list of predictors, model type and hyper-parameters. This field is automatically populated when a grid is built.
+* n_model - current number of grids/models in nano object. This field is automatically updated. 
+
+
+## Model Evaluation
+
+The 5-fold cross-validation technique was used to evaluate the models built since it is an attractive approach for selecting from various models, especially in cases where the degrees of freedom cannot be calculated, as in tree-based models (James, Witten, Hastie & Tibshirani 2013). 
+
+For evaluating model performance, the residual deviance and MSE were the two main metrics used. Residual deviance provides information on the maximum likelihood and was chosen since it is a relatively robust metric against a variety of different distributions. MSE was chosen since it is sensitive to outliers which is desirable for predicting property prices since we do indeed wish to be able to accurately predict prices of high-end properties as well. For the remainder of the report, all metrics considered will be the cross-validation metrics (calculated by averaging the metric error across the holdout folds) unless specified. 
 
 
 ## H2O Cluster Connection 
 
-There are two function which are able to be used to build models: \code{nano_automl} and \code{nano_grid}. \code{nano_automl} automatically builds a grid of various different ML models and finds the model with the best performance. \code{nano_grid} can be used to build a single model or for hyper-parameter tuning.
+There are two function which are able to be used to build models: `nano_automl` and `nano_grid`. `nano_automl` automatically builds a grid of various different ML models and finds the model with the best performance. `nano_grid` can be used to build a single model or for hyper-parameter tuning.
 
-All the modelling, diagnostics and performance testing are based on the `H2o` package. `H2o` is a fast, scalable, open-source machine learning platform. A key advantage of `H2o` compared to other popular machine learning packages is that `H2o` algorithms are all multi-core enabled, allowing for parallel processing. This significantly reduces run time and provides the potential to scale model training to over million rows of data. 
+All the modelling, diagnostics and performance testing are based on the `H2O` package. `H2O` is a fast, scalable, open-source machine learning platform. A key advantage of `H2O` compared to other popular machine learning packages is that `H2O` algorithms are all multi-core enabled, allowing for parallel processing.  
 
-To leverage `H2o`'s parallel processing capabilities, a connection to a H2o cluster must always be first initialised before building any models.  
+Before modelling with the `nano` package, a connection to a H2O cluster must always be first initialised before building any models.  
 
-```{r H2O connection, echo = FALSE, message = FALSE, warning = FALSE}
+```{r H2O connection, message = FALSE, warning = FALSE}
 
 # start h2o connection to cluster
-h2o::h2o.init()
+nano::nano_init()
 
 ```
 
 ## Building Nano Object
 
-The first step is to initialise a `nano` object using \code{create_nano}. Initially, the `nano` object is empty and holds no information. We can build our first grid of models using \code{nano_automl}. This will populate the first slot of the `nano` object. 
+Currently, the `nano` object is empty and holds no information. We can build our first grid of models using `nano_automl`. This will populate the first slot of the `nano` object.
 
-```{r Initial AutoML model, warning = FALSE}
+```{r echo = FALSE, warning = FALSE, message = FALSE}
 
-# initialise empty nano object
-nano <- nano::create_nano()
-
-# create grid of autoML models to set initial benchmark
-nano <- nano::nano_automl(nano        = nano, 
-                          response    = response,
-                          ignore_vars = c("sale_date", "fold", "data_id"),
-                          data        = data,
-                          fold_column = "fold",
-                          train_test  = "data_id",
-                          max_models  = 6,
-                          grid_description = "Initial grid of models for benchmarking.")
-
-# hyper-parameters of best model
-nano$meta$meta_1$hyper_params
-nano$meta$meta_1$search_conditions
+# load previously made nano object
+nano <- nano::nano_load(path)
 
 ```
 
-The above summary tables shows the cross-validation metrics for each of the models built. As can be seen from the table, 4 GBMs, 1 random forest (distributed random forest) and 1 GLM were constructed. The GBM_4 model performs the best in both residual deviance and MSE.
 
-It is important to note, even though the first grid has been added to the `nano` object, the pdp, ice and interaction elements have not been populated. To populate these elements, the specific helper functions are used. These functions will be demonstrated later. 
+```{r Initial AutoML model, warning = FALSE, eval = FALSE}
+
+# create grid of autoML models to set initial benchmark
+nano <- nano::nano_automl(nano             = nano, 
+                          response         = response,
+                          ignore_vars      = c("sale_date", "fold", "data_id"),
+                          data             = data,
+                          fold_column      = "fold",
+                          train_test       = "data_id",
+                          max_models       = 6,
+                          grid_description = "Initial grid of models for benchmarking.")
+```
+
+```{r warning = FALSE}
+# hyper-parameters of best model
+unlist(nano$meta$meta_1$hyper_params)
+unlist(nano$meta$meta_1$search_conditions)
+nano$grid$grid_1@summary_table$metric_smry
+```
+
+The above summary tables shows the cross-validation metrics for each of the models built. As can be seen from the table, 4 GBMs, 1 random forest (distributed random forest) and 1 GLM were constructed. The GBM_3 model performs the best in both residual deviance and MSE.
 
 
 ## Selecting Distribution: Gamma vs Tweedie
 
 From the initial grid of models built, it appears the GBM model provides the best fit to the data. Hence, for the remainder of the report, GBM models will be fitted to the data by tuning various parameters. 
 
-In a GBM model, different distributions can be assumed for the loss function. Given the positive skewed distribution of property prices identified in the previous sections, the "gamma" and "Tweedie" distribution would be the two most appropriate distributions to use. The use of the Tweedie distribution introduces a further additional parameter, called "tweedie_power" ($p$), which take on values $1 < p < 2$. In fact, $p = 2$ corresponds to the gamma distribution.    
+In a GBM model, different distributions can be assumed for the loss function. Given the positive skewed distribution of property prices identified in section \@ref(EDA), the "gamma" and "Tweedie" distribution would be the two most appropriate distributions to use. The use of the Tweedie distribution introduces a further additional parameter, called "tweedie_power" ($p$), which take on values $1 < p < 2$. In fact, $p = 2$ corresponds to the gamma distribution.    
 
 To determine which distribution to select, a saturated GBM model for each distribution was built using all variables available in the dataset to build the model. Enough trees were initially used (500 trees) to ensure the training error stabilised with early stopping implemented to control over-fitting. For the gamma distribution, a single saturated model was built while for the Tweedie distribution, a grid of four saturated models were built by tuning the tweedie_power. 
 
 
-```{r tweedie_power tuning, warning = FALSE}
+```{r tweedie_power tuning, warning = FALSE, eval = FALSE}
 
 # set initial parameters - this will be tuned at the end 
 hyper_params <- nano$meta$meta_1$hyper_params
@@ -488,6 +519,10 @@ nano <- nano::nano_grid(nano                = nano,
                         stopping_rounds     = 5,
                         score_tree_interval = 10,
                         grid_description    = "Saturated GBM Tweedie distribution tuning tweedie_power.")
+```
+
+
+```{r echo = FALSE, warning = FALSE, message=FALSE, fig.align="center", fig.height = 3, fig.width = 4, fig.cap = "Training deviance vs number of trees built."}
 
 # check loss metrics vs trees
 plot(nano$model$model_2, timestep = "AUTO", metric = "deviance") # enough trees are built, early stopping at ~ 350 trees. Keep to 500 trees.
@@ -495,10 +530,9 @@ plot(nano$model$model_2, timestep = "AUTO", metric = "deviance") # enough trees 
 
 
 
-```{r saturated gamma, warning = FALSE}
+```{r saturated gamma, warning = FALSE, eval = FALSE}
 
-
-## Saturated gamma distribution
+# Saturated gamma distribution
 hyper_params$distribution <- "Gamma"
 hyper_params$tweedie_power <- NULL
 
@@ -515,31 +549,34 @@ nano <- nano::nano_grid(nano                = nano,
                         score_tree_interval = 10,
                         grid_description    = "Saturated GBM gamma distribution.")
 plot(nano$model$model_3, timestep = "AUTO", metric = "deviance")
-
-# compare metrics
-metrics <- nano::nano_metrics(nano      = nano, 
-                              model_no  = 1:3, 
-                              data_type = "cv")
-metrics # tweedie 1.8 saturated model performs the best across all metrics 
 ```
 
-Firstly, from the plots, it can be seen 500 trees is enough trees to ensure the loss error stabilises (in this case, early stopping terminates the training process). From the output of building the GBMs with the Tweedie distribution, the models with higher tweedie_power performs better. Further this model performs better than the GBM with gamma distribution. 
+```{r initial metrics}
+# compare metrics
+nano$grid$grid_2@summary_table$grid_smry # tweedie 1.8 saturated model performs the best across all metrics 
 
-The three model's prediction mechanism will also be compared to examine which model is most inline with our expectation. The \code{nano_pdp} function is used to calculate the PDPs of the top model of each specified grid for the selected variables. The function also produce plots of the PDPs providing an effective method to easily compare different models.    
+```
 
-```{r initial pdps, warning = FALSE}
+Firstly, from figure 4.1, it can be seen 500 trees is enough trees to ensure the loss error stabilises (in this case, early stopping terminates the training process). From the above summary table, models with higher tweedie_power performs better. Further this model performs better than the GBM with gamma distribution. 
+
+The three model's prediction mechanism will also be compared to examine which model is most inline with our expectations. The `nano_pdp` function is used to calculate the PDPs of each model in the specified slots for the selected variables. The function also produce plots of the PDPs providing an effective method to easily compare different models.    
+
+```{r initial pdps, warning = FALSE, eval = FALSE}
 nano <- nano::nano_pdp(nano = nano,
                        model_no = 1:3, 
-                       vars = c("lot_size", "income", "crime_rate", "dist_to_rail_station", "dist_to_unsealed_road", "dist_to_school", "longitude", "SO2", "PM10", "latitude"),
+                       vars = c("lot_size", "income", "crime_rate", "dist_to_rail_station", "dist_to_unsealed_road", "dist_to_school", "longitude", "PM10", "latitude"),
                        plot = FALSE)
+```
 
+```{r echo = FALSE, message = FALSE, warning = FALSE, fig.height = 7, fig.width = 8, fig.cap = "PDPs of initial three models."}
 pdp <- rbind(nano$pdp$pdp_1, nano$pdp$pdp_2, nano$pdp$pdp_3)
 pdp <- pdp[, .(var_band, mean_response, var)]
-pdp[, model_id := rep(c(nano$model$model_1@model_id, nano$model$model_2@model_id, nano$model$model_3@model_id), each = 240)]
+pdp[, model_id := rep(c(nano$model$model_1@model_id, nano$model$model_2@model_id, nano$model$model_3@model_id), each = 180)]
 
 pdp_plot <- function(pdp, vars) {
   pdps <- rep(list(NA), length(vars))
-  for (var in vars) {
+  for (var in vars) { 
+    if (var %in% c("income", "dist_to_school")) ind = TRUE else ind = FALSE
     pdp <- as.data.frame(pdp)
     dat <- pdp[pdp$var == var,]
     fig <- nano:::quiet(plot_ly(data = dat,
@@ -548,8 +585,13 @@ pdp_plot <- function(pdp, vars) {
                    group_by = ~model_id,
                    type = "scatter", 
                    color = ~model_id, 
-                   mode = "lines+markers") %>% 
-                     layout(xaxis = list(title = var)))
+                   legendgroup = ~model_id,
+                   mode = "lines+markers",
+                   showlegend = ind) %>% 
+                     layout(xaxis = list(title = var,
+                                         hoverformat = ",.2s"),
+                            yaxis = list(hoverformat = ",.2s"),
+                            legend = list(orientation = "h")))
     pdps[[var]] <- fig
   }
   return(pdps)
@@ -558,12 +600,17 @@ pdp_plot <- function(pdp, vars) {
 # plots pdps
 pdp_plots <- pdp_plot(pdp, unique(pdp$var))
 #pdp_plots$lot_size # expected relationship. m1 is bit unstable, m2 better at differentiating 
-pdp_plots$income # expected, m1 and m2 good at diff - perhaps apply monotone constraint to this
-pdp_plots$crime_rate # interesting, m1 unstable
+#pdp_plots$income # expected, m1 and m2 good at diff - perhaps apply monotone constraint to this
+#pdp_plots$crime_rate # interesting, m1 unstable
 #pdp_plots$dist_to_rail_station # expected, m1 unstable
-pdp_plots$dist_to_unsealed_road # all similar, clear increasing trend - perhaps apply monotone constraint
-pdp_plots$longitude # expected, all are similar
+#pdp_plots$dist_to_unsealed_road # all similar, clear increasing trend - perhaps apply monotone constraint
+#pdp_plots$longitude # expected, all are similar
 #pdp_plots$latitude # interesting, m1 highly variable, m2 and m3 capture effect of latitude
+
+subplot(pdp_plots$income, pdp_plots$dist_to_unsealed_road, pdp_plots$longitude, 
+        nrows = 2,
+        titleX = TRUE,
+        titleY = TRUE)
 
 ## Conclusion
 # M1 is very unstable. This is expected since it only has 45 trees, hence high model variance. # M2 shows expected relationships and good at differentiating sale_price by risk factors
@@ -577,20 +624,30 @@ pdp_plots$longitude # expected, all are similar
 
 From the above discussion, it is clear the GBM with the Tweedie distribution (tweedie_power = 1.8) produces the best performance and has a prediction mechanism which is inline with our expectations. In this section, we will consider several different models built using the Tweedie distribution.
 
-The first model we shall consider is to use only the top 10 important variables from the Tweedie model above. The variable importance can be calculated using the \code{nano_varimp} function, from which the most important variables can be extracted. 
+### Top 10 Variables
 
-```{r echo = FALSE, results='markup', cache = TRUE}
+The first model we shall consider is to use only the top 10 important variables from the Tweedie model above. The variable importance can be calculated using the `nano_varimp` function, from which the most important variables can be extracted. 
+
+```{r initial varimp}
 
 nano <- nano::nano_varimp(nano = nano,
                           model_no = 2)
 varimp_2 <- data.table::copy(nano$varimp$varimp_2)
-fig <- plot_ly(x = varimp_2$percentage, 
-               y = varimp_2$variable,
-               type = 'bar', 
-               orientation = 'h')
-fig
+```
 
-## mode Tweedie 1.8 with only top 15 variables
+```{r echo = FALSE, fig.height = 4, fig.cap = "Variable importance of top 10 variables in Tweedie model."}
+fig <- plot_ly(x = varimp_2$percentage[1:10]/100, 
+               y = factor(varimp_2$variable, levels = rev(varimp_2$variable))[1:10],
+               type = 'bar', 
+               orientation = 'h') %>% 
+  layout(xaxis = list(title = "Importance (%)",
+                      hoverformat = ".0%"))
+fig
+```
+
+```{r top 10, eval = FALSE}
+
+## mode Tweedie 1.8 with only top 10 variables
 ignore_vars <- nano$varimp$varimp_2$variable[-(1:10)]
 hyper_params$distribution <- "Tweedie"
 hyper_params$tweedie_power <- 1.8
@@ -611,9 +668,11 @@ nano <- nano::nano_grid(nano                = nano,
 ```
 
 
-The PDPs from the previous section suggest there is a clear increasing relationship between income, dist_to_unsealed_road and sale_price. Such a relationship is expected as well. However, the PDPs is not monotically increasing, but rather zig-zagged. This can be due to the model overfitting and incorrectly capturing random variation, which is a common issue in machine learning models. A method to prevent this is to apply monotone constraints on these variables. This can be done by supplying a list to the `monotone_constraints` argument in the \code{nano_grid} function.    
+### Monotone Constraints
 
-```{r cache = TRUE}
+The PDPs from the previous section suggest there is a clear increasing relationship between income, dist_to_unsealed_road and sale_price. Such a relationship is expected as well. However, the PDPs is not monotically increasing, but rather zig-zagged. This can be due to the model overfitting and incorrectly capturing random variation, which is a common issue in machine learning models. A method to prevent this is to apply monotone constraints on these variables. This can be done by supplying a list to the `monotone_constraints` argument in the `nano_grid` function.    
+
+```{r monotone constraints, eval = FALSE}
 
 ## Tweedie 1.8 with 10 variables plus monotone constraint on income and dist_to_unsealed_road
 nano <- nano::nano_grid(nano                 = nano,
@@ -628,16 +687,15 @@ nano <- nano::nano_grid(nano                 = nano,
                         stopping_tolerance   = 0.01,
                         stopping_rounds      = 5,
                         score_tree_interval  = 10,
-                        monotone_constraints = list(income = 1,
-                                                    dist_to_unsealed_road = 1),
+                        monotone_constraints = list(income = 1, dist_to_unsealed_road = 1),
                         grid_description     = "GBM Tweedie 1.8 distribution - top 10 vars with monotone constraint on income and dist_to_unsealed_road.")
 
 ```
 
 
-## Hyper-parameter Tuning {#hpt}
+### Hyper-parameter Tuning
 
-Finally, the last grid we will consider is hyper-parameter tuning on the previous model. Hyper-parameter tuning can be performed by specifying the `hyper_param` argument in the \code{nano_grid} function. Six hyper-parameters were selected to be tuned. They were:
+Finally, the last grid we will consider is hyper-parameter tuning on the previous model. Hyper-parameter tuning can be performed by specifying the `hyper_param` argument in the `nano_grid` function. Six hyper-parameters were selected to be tuned. They were:
 
 * min_rows        - minimum number of rows per node.
 * max_depth       - maximum depth of each tree
@@ -646,13 +704,12 @@ Finally, the last grid we will consider is hyper-parameter tuning on the previou
 * col_sample_rate_per_tree - percentage of columns sampled for each tree
 * tweedie_power   - variance power of Tweedie distribution for loss function
 
-The reason for specifically selecting these six hyper-parameters to tune was because the model's fitting process is highly dependent on the values of these six hyper-parameters. Choosing inappropriate values can result in over-fitting or under-fitting of the model, hence it is important to consider several different combinations of the above hyper-parameters before selecting the final model (James et al. 2013). 
+Hyper-parameter tunin is important because choosing inappropriate values can result in over-fitting or under-fitting of the model. Hence it is important to consider several different combinations of the above hyper-parameters before selecting the final model (James et al. 2013).
 
 The "learning_rate" hyper-parameter was chosen not to be included in the tuning since as a conservatively small value was already chosen and increasing its value will not improve the model fit. Further, the "ntrees" hyper-parameter was chosen not to be included in the tuning since the model was already fitted with an excess number of trees and early stopping was implemented to avoid overfitting of the model.
 
 
-
-```{r hyper-parameter tuning, eval = FALSE, cache = TRUE}
+```{r hyper-parameter tuning, eval = FALSE}
 
 # hyper-parameter tuning of max_depth in selected model
 hyper_params_tune <- list(ntrees                   = 500,
@@ -666,606 +723,242 @@ hyper_params_tune <- list(ntrees                   = 500,
                           min_split_improvement    = 1e-05,
                           tweedie_power            = seq(1.8, 1.95, 0.05))
 
-nano <- nano::nano_grid(nano                = nano,
-                        response            = response,
-                        algo                = "gbm", 
-                        data                = data,
-                        ignore_vars         = ignore_vars,
-                        fold_column         = "fold",
-                        hyper_params        = hyper_params_tune,
-                        strategy            = "RandomDiscrete",
-                        max_models          = 50,
-                        max_runtime_secs    = 10 * 60,
-                        stopping_metric     = "deviance",
-                        stopping_tolerance  = 0.01,
-                        stopping_rounds     = 5,
-                        score_tree_interval = 10,
-                        monotone_constraints = list(income = 1,
-                                                    dist_to_unsealed_road = 1),
-                        grid_description    = "GBM Tweedie 1.8 distribution - top 10 vars with monotone constraints and hyper-parameter tuning.")
+nano <- nano::nano_grid(nano                 = nano,
+                        response             = response,
+                        algo                 = "gbm", 
+                        data                 = data,
+                        ignore_vars          = ignore_vars,
+                        fold_column          = "fold",
+                        hyper_params         = hyper_params_tune,
+                        strategy             = "RandomDiscrete",
+                        max_models           = 50,
+                        max_runtime_secs     = 10 * 60,
+                        stopping_metric      = "deviance",
+                        stopping_tolerance   = 0.01,
+                        stopping_rounds      = 5,
+                        score_tree_interval  = 10,
+                        monotone_constraints = list(income = 1, dist_to_unsealed_road = 1),
+                        grid_description     = "GBM Tweedie 1.8 distribution - top 10 vars with monotone constraints and hyper-parameter tuning.")
 
 
 ```
 
 
 
-## Model Checking and Selection {#PDP}
+## Model Checking and Selection {#check}
 
-From the models built above, we shall compare four models (the top models in grids 4 and 5, and the top two models in grid 6) more closely in detail to select our final model. We are not able to immediately use the `nano` helper functions to compare these four models since it is only able to compare one model per slot (hence it cannot compare the top two models in grid 6). However, instead we can use the \code{grid_to_nano} function to create a new `nano` object where each of the desired models are given a separate slot. Then we can compare the four models using our usual methods.
+From the models built above, we shall compare four models (the top models in grids 4 and 5 (M4 and M5 respectively), and the top two models in grid 6 (M6a and M6b respectively)) more closely in detail to select our final model. We are not able to immediately use the `nano` helper functions to compare these four models since it is only able to compare one model per slot (hence it cannot compare models M6a and M6b). However, instead we can use the `grid_to_nano` function to create a new `nano` object where each of the desired models are given a separate slot. Then we can compare the four models using our usual methods.
 
-```{r cache = TRUE, warning = FALSE, message = FALSE, echo = FALSE}
+```{r new nano, warning = FALSE, message = FALSE}
 
 # create new nano object with separate slots for the four required models
-nano_fin <- nano::grid_to_nano(nano        = nano,
-                               grids_no    = 4:6,
-                               n_top_model = c(1, 1, 2))
-
+nano_fin <- nano:::quiet(nano::grid_to_nano(nano        = nano,
+                                            grids_no    = 4:6,
+                                            n_top_model = c(1, 1, 2)))
+# cv metrics
 nano::nano_metrics(nano      = nano_fin,
                    model_no  = 1:4, 
                    data_type = "cv")
 
 ```
 
-From the above table, model 6_28 has the best MSE and residual deviance, however model 6_15 has very similar metrics and in fact has the best MAE. THe other two models have relatively similar metrics, with the model with the monotone constraints performing better. However both models have a significantly higher residual deviance compared to the two models from grid 6. This is due to the models in grid 6 having a higher tweedie_power of 1.95. This suggests, Tweedie (1.95) distribution is a better fit to the sale_price distribution. 
+From the above table, M6a performs the best across all metrics, however the three other models perform very similarly to M6a. However M4 and M5 have a significantly higher residual deviance compared to M6a and M6b. This is due to M6a and M6b having a higher tweedie_power of 1.95. This suggests Tweedie (1.95) distribution is a better fit to the sale_price distribution.
 
-```{r cache = TRUE}
+Figure 4.3 shows the training residuals vs the actual values for each of the four models. All models have very similar residuals, however models M4 and M6b have slightly better residuals while M6a has the worse residuals. In general, the model predictions are relatively robust for properties less than $\$1M$, however there is a clear increasing trend in the residuals for properties greater than $\$1M$. This indicates the models underestimate the sale price for more expensive properties. The residuals suggest for future modelling, it would be more appropriate to model lower value ($< \$1M$) and higher value ($>\$1M$) properties separately.  
 
-nano_fin <- nano::nano_pdp(nano     = nano_fin,
-                           model_no = 1:4,
-                           vars     = c("lot_size", "income", "crime_rate", "dist_to_hospital", "dist_to_unsealed_road", "PM10", "longitude", "dist_to_medical"),
-                           plot = FALSE)
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.width = 8, fig.cap = "Training residuals of four models."}
+
+# function to plot residuals 
+res_plot <- function(nano, n_model, data_type) {
+  res_all <- data.table::data.table()
+  for (i in n_model) {
+    pred <- nano:::quiet(h2o::h2o.predict(object  = nano$model[[i]],
+                             newdata = h2o::as.h2o(nano$data[[i]][data_id == data_type])))
+    act <- nano$data[[i]][data_id == data_type][[response]]
+    dif <- act - data.table::as.data.table(pred)[["predict"]]
+    res <- data.table::data.table(model_id  = nano$model[[i]]@model_id,
+                                  actual    = act,
+                                  residual  = dif)
+    res_all <- rbind(res_all, res)
+  }
+  
+  fig <- plot_ly(data = res_all,
+                 x = ~actual,
+                 y  = ~residual,
+                 group_by = ~model_id,
+                 type = "scatter",
+                 color = ~model_id,
+                 mode = "markers") %>% 
+    layout(xaxis = list(hoverformat = ",.2s"),
+           yaxis = list(hoverformat = ",.2s"))
+  
+  return(fig)
+}
+
+# training residuals for the four models
+residuals <- res_plot(nano_fin, 1:4, "train")  
+residuals
+
+```
+
+
+Figure 4.5 compare the PDPs for each of the four models. The PDPs for lot_size, income dist_to_unsealed_road are very similar and follow the expected trend. Note the PDP of income and dist_to_unsealed_road for M5 is monotonically increasing and is smoother than the PDP for M4 and M6b. The PDP of crime_rate is highly variable for lower values. This could signify the models incorrectly capturing random variation. M5 and M6a is the least variable out of the four models. 
+Interestingly, as the crime_rate increases above 2.3, there is a rapid increase in sale_price. This is rather unexpected and in fact may be a spurious relationship. One possible explanation for this is that luxurious properties attract more crimes (e.g. theft), therefore it is higher valued properties that attract higher crime rates rather than higher crime rates increasing the sale price of a property.      
+
+
+```{r final pdps, warning = FALSE, message = FALSE, fig.cap = "PDPs for final four models."}
+
+nano_fin <- nano:::quiet(nano::nano_pdp(nano     = nano_fin,
+                                        model_no = 1:4,
+                                        vars     = c("lot_size", "income", "crime_rate", "dist_to_hospital", 
+                                                     "dist_to_unsealed_road", "PM10", "longitude", "dist_to_medical"),
+                                        plot = FALSE))
+```
+
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height = 8, fig.width = 9, fig.cap = "PDPs of final four models."}
 
 pdp <- rbind(nano_fin$pdp$pdp_1, nano_fin$pdp$pdp_2, nano_fin$pdp$pdp_3, nano_fin$pdp$pdp_4)
-pdp <- pdp[, .(var_band, mean_response, var)]
+pdp <- pdp[, c(1, 2, 7)]
 pdp[, model_id := rep(c(nano_fin$model$model_1@model_id, nano_fin$model$model_2@model_id, nano_fin$model$model_3@model_id, nano_fin$model$model_4@model_id), each = 160)]
 pdp_fin_plots <- pdp_plot(pdp, unique(pdp$var))
 
-pdp_fin_plots$lot_size # expected and all very similar
-pdp_fin_plots$income # m5 is a bit smoother, but m6_15 is also very smooth but may be over-estimating at extremes
-pdp_fin_plots$crime_rate # very variable at small values, m6_15 is the most stable
-pdp_fin_plots$dist_to_unsealed_road # all very similar and show clear increasing trend 
-pdp_fin_plots$PM10 # all highly invariable and difficult to understand trend. Models 4 and 5 least variable, but perhaps don't capture all information
-pdp_fin_plots$longitude # all very similar
-pdp_fin_plots$dist_to_medical # ^
-pdp_fin_plots$dist_to_hospital # ^
+#pdp_fin_plots$income # m5 is a bit smoother, but m6_15 is also very smooth and differentiates better at extremes
+#pdp_fin_plots$lot_size # expected and all very similar
+#pdp_fin_plots$crime_rate # very variable at small values, m6_15 is the most stable
+#pdp_fin_plots$dist_to_unsealed_road # all very similar and show clear increasing trend 
+#pdp_fin_plots$PM10 # all highly invariable and difficult to understand trend. Models 4 and 5 least variable, but perhaps don't capture all information
+#pdp_fin_plots$longitude # all very similar
+#pdp_fin_plots$dist_to_medical # ^
+#pdp_fin_plots$dist_to_hospital # ^
+
+subplot(pdp_fin_plots$income, pdp_fin_plots$lot_size, pdp_fin_plots$crime_rate, 
+        pdp_fin_plots$dist_to_unsealed_road,
+        nrows = 2,
+        titleX = TRUE,
+        titleY = TRUE)
 
 ```
 
-
-
-
-The PDP for "weight" (figure 7) shows a similar trend across each model. Generally, the predicted pure premium decreases as weight increases (keeping all else constant). This agrees with our initial expectations drawn from figure 3 in section \@ref(EDA). However, model_15 significantly penalises cars with weight less than 1,100 kg. Even though this may be the actuarially fair premium, from a business perspective, it is not appropriate to charge excessively higher prices for a particular segment of classes. As well, it is not desirable for the predicted pure premium to increase significantly with small changes in values of the predictors (reducing weight from 1,100 kg to 1,000 kg leads to a $\sim 40\%$ increase in the mean response). 
-
-The PDPs for all other variables are nearly identical across all other models. Therefore, model_3 was selected as the final fitted model.   
-
-
-
-```{r cache = TRUE, echo = FALSE, fig.height=3, fig.width=8, fig.cap = "Partial dependency plots of top three tuned models for weight."}
-
-pdp_fin$pdp$plots$weight
-
-```
-
+Conclusion: Select model M6a. Has the best performance across all metrics. It also has slightly more robust residuals and provides a more consistent prediction mechanism than the other models as shown in the PDPs. 
 
 
 
 # Model Performance Assessment
 
-## Summary Statistics on Predictions based on Unseen Test Dataset
+## Summary Statistics on Predictions based on Holdout Dataset
 
-The final selected model performance was assessed by predicting on the unseen test dataset. Summary of the results are shown in table 6. The model performed similarly on the unseen data compared to the training data, with the MAE only increasing slightly from $208$ to $210$. In fact, the RMSE significantly reduced from $986$ to only $908$. The large decrease in RMSE, yet relatively constant MAE, perhaps indicates lower frequency of outliers in the unseen dataset since the RMSE is more sensitive to outliers. The test RMSLE and residual deviance is comparable with the training dataset.        
+The final selected model performance was assessed by predicting on the unseen holdout dataset. Summary of the results are shown in table below.  
 
-```{r test performance, echo = FALSE}
+```{r test performance, warning = FALSE}
 
-nano::nano_metrics(nano_fin, 4:7, "holdout")
-
-```
-
-```{r echo = FALSE, results='markup'}
-
-# metrics on training and test dataset
-mod_fin_metric <- data.frame(Metric = c("RMSE", "MAE", "RMSLE", "Deviance"),
-                             Train = c(mod_fin$cv_metric("rmse"), mod_fin$cv_metric("mae"), mod_fin$cv_metric("rmsle"), mod_fin$cv_metric("residual_deviance")),
-                             Test = c(fin_perf@metrics$RMSE, fin_perf@metrics$mae, fin_perf@metrics$rmsle, fin_perf@metrics$mean_residual_deviance))
-mod_fin_metric$Train <- round(as.numeric(mod_fin_metric$Train), 0)
-mod_fin_metric$Test <- round(as.numeric(mod_fin_metric$Test), 0)
-kable(mod_fin_metric,
-#      table.attr = "style='width:35%;'",
-      caption="Summary Metrics of Final Model") %>%
-  kable_styling(font_size = 10,bootstrap_options ="condensed", latex_options = "HOLD_position")
-```
-
-
-
-## Analysis of Predictions on Test Dataset
-
-First, the distribution of predictions were analysed to ensure they were reasonable and met our expectations. The left plot in figure 8 shows the density distribution of the model's predictions. It can be seen that all the predictions are non-negative as required. Further, the predictions follow a reasonable long-tail distribution. A majority of the predictions are less than $\$200$ and there are no excessive outliers.
-
-The right plot of figure 8 shows the deciles of the predicted pure premiums. The predicted premiums from the model gradually increases for the first nine deciles which is expected since about $90\%$ of the entries have 0 loss cost. The last decile of the predicted values are significantly higher as expected. These represent the more extreme risks, which should be charged a higher premium.   
-
-
-```{r echo = FALSE, message = FALSE, fig.height = 3.5, fig.width = 6, fig.align = "center", fig.cap = "Left: Histogram and density of final model's predictions on unseen test dataset. Vertical line is mean prediction. Right: Deciles of predicted pure premium on test dataset."}
-
-# histogram of final predictions
-hist_pred <- ggplot(mod_fin$pred, aes(x=predict)) +
-  geom_histogram(aes(y=..density..), 
-                 position="identity", 
-                 alpha=0.6, 
-                 fill = "deepskyblue") +
-  geom_density(adjust = 2, 
-               alpha=0.4, 
-               fill = "deepskyblue", 
-               color = "darkblue") +
-  geom_vline(aes(xintercept=mean(mod_fin$pred$predict)),
-             linetype="dashed", 
-             color = "darkblue") +
-  labs(x = "Predicted Pure Premium", y = "Density")+
-  lares::theme_lares2(bg_colour = "white")
-
-# percentile plot of predictions
-perc_pred <- plot_score_dec(mod_fin$pred$predict)
-
-grid.arrange(hist_pred, perc_pred, nrow = 1)
+nano::nano_metrics(nano_fin, 3, "holdout")
 
 ```
 
 
+## Analysis of Predictions on Holdout Dataset
 
-The actual vs predicted plot (left plot of figure 9) compares the predicted values against the actual values in the test dataset. It can be seen for a significant number of entries, the predicted value has overestimated the actual observed loss cost. However, this is expected since over $90\%$ of the data has a loss cost of 0. Importantly, the purpose of an actuarial model is to predict the expected loss cost. Just because a particular policyholder has 0 loss cost in one policy period, it does not mean their expected loss cost will be 0 since they may claim in the future. In particular for motor insurance, claims are rare events and even for riskier policies, for a particular policy period, it can be expected no claims will be made (however this does not mean the expected value is 0). Hence it would be inappropriate to design a model which predicts a 0 pure premium for $90\%$ of policyholders, nor would it make business sense to charge a customer $\$0$ for their premium. Thus, from an actuarial and business perspective, the residuals of the final model are appropriate. 
+First, the distribution of predictions were compared with the actuals shown in figure 5.1. The distributions generally match each other, however the predicted values have greater density in lower values compared to the actual sale prices. This corresponds to the residual plots in figure 4.3 which showed the predicted values underestimates the sale prices for higher valued properties. 
 
-```{r echo = FALSE}
 
-# extract outlier in test dataset
-outlier <- data.frame(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)])
-# create actual vs predicted plot
-p1 <- plot_res(xtest0$pure_premium, mod_fin$pred$predict)
-p2 <- p1 +
-  geom_point(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)], colour = "red") + # adds outlier in red
-  geom_text(x = max(xtest0$pure_premium), y = mod_fin$pred$predict[xtest0$pure_premium == max(xtest0$pure_premium)], label = "outlier", hjust = 1.5, colour = "red") # label outlier
-# plot of absolute error by deciles
-p3 <- plot_err_dec(xtest0$pure_premium, mod_fin$pred$predict)
+```{r echo = FALSE, message = FALSE, warning = FALSE, fig.height = 3.5, fig.width = 9, fig.cap = "Histogram of predictions vs actuals."}
+
+pred <- nano_predict(nano_fin, 4, "holdout")
+
+fig <- plot_ly(alpha = 0.6)
+fig <- fig %>% add_histogram(x = ~pred$actual, name = "Actual")
+fig <- fig %>% add_histogram(x = ~pred$predicted, name = "Predicted")
+fig <- fig %>% layout(barmode = "overlay",
+                      xaxis = list(title = "Sale Price"),
+                      yaxis = list(title = "Frequency"),
+                      title = "Histogram of Predicted vs Actual")
+#htmltools::div(fig, align = "center")
+fig
 
 ```
-
-```{r echo = FALSE, fig.height=3, fig.width=8, fig.align = "center", fig.cap = "Actual vs predicted plot of final model on test dataset."}
-#grid.arrange(p2, p3, nrow = 1)
-# grid.arrange doesn't work for p2 and p3 for some reason, so had to individually plot these 2 graphs
-grid.arrange(p2, p3, nrow = 1)
-```
-
-The right plot of figure 9 confirms the residuals are not excessively high and are within reasonable bounds. Over $90\%$ of entries have a absolute residual of less than $\$250$. The large absolute error for the $100$th percentile is due to a single outlier, which is labelled on actual vs predicted plot. While the model greatly underestimates the pure premium for this entry, this is not a major concern because by nature, insurance involves uncertain events. Hence, it can be expected the claims cost for a policyholder in a particular policy term to fluctuate greatly due to rare, but significant insurance events. This is confirmed by how the claims cost for this entry is more than double the claims cost of any other entry. As discussed in the preceding paragraph, actuarial models aim to predict the expected loss cost, hence a single large outlier is not a major concern.    
-
 
 
 ## Variable Importance
 
-Figure 10 ranks the relative importance of each variable in the final model. It helps provide interpretability to the GBM model by identifying which variables were the most significant in determining the model's predictions. It can be seen in the plot, that "region" is the most important variable. This agrees with our initial expectations since the location in which a vehicle is parked can have a significant impact on the likelihood of incurring any damages. For example, a vehicle parked on the street is much more likely to become damaged (via natural weather events, accidental damage, vandalism) compared to a vehicle which is securely parked in a garage. 
+The below plot ranks the relative importance of each variable in the final model. It appears longitude is the most predictive variable by far, explaining over $55\%$ of the model's predictive power. This is expected since it is generally well-known that property prices vary significantly by region and hence by longitude. E.g. Properties with high longitude would have a higher sale price since these properties are in the city center. This fact is supported by the PDPs shown above. 
 
-However, it is important to note, variable importance plots tend to favour variables with greater number of unique values. The variable "region" has 34 unique values, which is significantly more than any other variable. Hence, it is important to interpret the seemingly large disparity in importance compared to other variables with caution.    
+Interestingly, sale_date is calculated to be the 6th most predictive variable, despite not showing any relationship in the time series plot produced earlier in the report. This may be due to that the variable important calculation algorithm tends to favour variables with higher number of levels. Since sale_date has 364 unique levels, this may explain why it has been assigned a higher then expected variable importance. 
 
-It is interesting to note that the least important variable is "prior_claims". Intuitively, it would be expected that policyholders who have previously lodged more claims would represent higher risks, and hence would be a strong predictor for future claims cost. However, it can be argued this impact is captured by the "ncd_level" variable which is identified to be the second most important variable by the model. Nevertheless, it is recommended policyholders with large number of previous claims to be carefully monitored, and their actual claims cost to be compared with the predictions produced by the model. If it appears the model is consistently underestimating the true claims cost, it is suggested to re-train the model, or place an additional loading on such policyholders.   
+```{r echo = FALSE, fig.height = 3, fig.width = 7, fig.cap = "Variable importance plot of final selected model. Importance of most significant variable is scaled to 1."}
 
-```{r, echo = FALSE, out.width = "50%", fig.align  = "center", fig.cap = "Variable importance plot of final selected model. Importance of most significant variable is scaled to 1."}
-mod_fin$varimp_plot(8)
-```
+nano_fin <- nano::nano_varimp(nano_fin, 4, plot = FALSE)
+varimp_4 <- data.table::copy(nano_fin$varimp$varimp_4)
 
-## Partial Depdency Plots (PDP) {#NCDPDP}
-
-The key PDPs for the final model has already been discussed in section \@ref(PDP). However, the PDP "ncd_level" was additionally analysed to compare with figure 4 and our expectations discussed in section \@ref(EDA). The PDP in figure 11 shows a relatively smooth decrease in the mean response as NCD level increases. This matches with our expectation since drivers in higher NCD levels represent safer drivers and hence should have a lower expected loss cost. This can give us confidence that the final model correctly captures real-life relationships. 
-
-```{r echo = FALSE, warning = FALSE, message = FALSE, out.width="50%", fig.align = "center", fig.cap = "Partial dependency plot of NCD level for final model."}
-ncd_pdp <- quiet(pdp_multi_plot(list(mod_fin$model, mod_fin$model), 
-                                newdata = xtrain1, 
-                                include_vars = "ncd_level")
-                 )
-ncd_pdp$pdp$plots$ncd_level
-```
-
-
-
-## Interaction Plots {#interaction}
-
-One of the main advantages of GBM models is it is easily able to capture interactions between variables. The "max_depth" parameter was set to 4, hence up to third order interactions are able to be identified by the model. Using the `IML` package, it is possible to quantify the level of pairwise (first order) interaction between each variable captured by the GBM model. This is illustrated in figure 12. 
-
-The main purpose of these plots was to help identify key interactions in the dataset so that team members performing the GLM modelling were able to manually include these interactions in their models. 
-
-```{r echo = FALSE,, fig.height=2.5, fig.widtht=5, fig.align = "center", fig.cap = "Plot of pairwise interaction between variables captured by the final mode. Left: All pairwise combinations with year variable. Right: All pairwise combinations with region variable."}
-
-## NOTE TO MARKER: these plots take about 20 minutes each to produce. Hence, the plots were saved and loaded in rather than having to reproduced them each time the markdown file was compiled. Please see Appendix I to view the original code used to produce the interaction plots. 
-
-interaction_region <- quiet(readRDS(paste0(dir, "R Models\\region.rds")))
-interaction_year <- quiet(readRDS(paste0(dir, "R Models\\year.rds")))
-grid.arrange(interaction_year, interaction_region, nrow = 1)
+fig <- plot_ly(x = varimp_4$percentage[1:10]/100, 
+               y = factor(varimp_4$variable, levels = rev(varimp_4$variable))[1:10],
+               type = 'bar', 
+               orientation = 'h') %>% 
+  layout(xaxis = list(title = "Importance (%)",
+                      hoverformat = ",.0%"))
+fig
 
 ```
 
 
-# Model Considerations
-## Advantages
-GBMs are rapidly growing in popularity in machine learning due to their wide range of advantages compared to traditional linear models and GLMs.
+## Partial Depdency Plots (PDP)
 
-GBMs have strong predictive power which is superior to most models. Further, the fitting process is robust against multi-collinearity unlike linear models and GLMs. This allows for more accurate and competitive premium pricing and better identification of different risk classes. 
+The PDPs for the final model has already been discussed in previous sections. However, we shall give a brief analysis on some of the key PDPs.
 
-Another important advantage of GBMs is their ability to easily identify deep interactions between variables. This is essential because in real-life data, especially in insurance data, the relationships between the features and the response variable are inherently complicated and cannot be adequately modelled by a linear trend. This is supported by the interaction plots produced in section \@ref(interaction) which demonstrates the significant interactions the GBM model identifies in the data. 
+* Longitude - A longitude increases, there is initially a small drop in sale prices, and then its begins to sharply increase. This reflects how the most eastern suburbs are the most affulent (e.g. North Sydney) compared to western suburbs and hence will tend to have higher sale prices. 
 
-An unique feature of GBMs compared to linear models and GLMs is hyper-parameter tuning. GBMs have a variety of different hyper-parameters which determine how fast the model trains and its complexity. By carefully fine-tuning the hyper-parameters, issues of over-fitting and under-fitting can be controlled to produce an optimal fit. This is seen in section \@ref(hpt) where hyper-parameter tuning led to a reduction in the cross-validation MAE and produced a robust model which performed well on the unseen test dataset. 
+* Distance to hospital - There is a significant drop in sale price as distance to hospital increases to 5 km, and then it flattens out. The PDP suggest properties within a 1 km radius to hospitals are about $\$40K$ more expensive to other properties further out. 
 
+* Distance to medical - This has a similar relationship to dist_to_hospital with an even more sharper decrease in sale price as distance to medical centre increases. The PDP states properties which are right next to a medical centre are worth $\$60K$ more than properties which are 5 km or more away from a medical center.
 
-## Disadvantages
-A common criticism of GBM models is their lack of interpretability. Given the produced model has 3,500 trees, it is not possible to visualise the GBM model and form a clear understanding of how predictions are exactly produced. From a business perspective, it is important to understand how models produce their predictions because it is important customers are not unfairly discriminated against. As well, it allows for greater transparency to key stakeholders. However, there is a variety of methods which are available to help better understand GBM models, which have been covered in this report (e.g. PDPs, variable importance plots, interaction plots).
+* Distance to school (this is produced from earlier models created) - Interestingly, sale prices increase for properties further away from schools before flattening out. The PDPs suggest properties which are at least 3 km away from schools are worth more. 
 
-Another disadvantage of GBM models is the large computational power required to fit models, especially when performing hyper-parameter tuning. Given the limited resources available, compromises of model accuracy had to be made to ensure the code run time was not excessive (e.g. early stopping, random grid search for hyper-parameter tuning). The dataset used to train the model was relatively small ($\sim 32,000$ rows) and even then, run time and memory issues were encountered. In reality, insurance datasets can have up to millions of rows, hence fitting GBM models on such datasets can place a large strain on computing resources. However, it should be noted, insurance companies have access to much higher levels of computing power than I had access to. Hence, it is anticipated, issues of run time will be less of a concern when performing the modelling in practice. 
+* Distance to railway station (this is produced from earlier models created) - Similarly to above, interestingly, the PDPs predict that sale prices increase for as properties become further away from railway stations. 
 
-\newpage 
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.height = 4, fig.width = 8, fig.cap = "PDPs of initial saturated Tweedie model. Left: Distance to school. Right: Distance to railway station."}
 
-# References
-
-James, G., Witten, D., Hastie, T. & Tibshirani, R. 2013, 'An Introduction to Statistical Learning', vol. 112, New York: Springer
-
-Kuhn, M. & Johnson, K. 2013, 'Applied Predictive Modelling Springer', New York Heidelberg Dordrecht London
-
-Thompson, J.P., Baldock, M.R. & Dutschke, J.K. 2018, 'Trends in the crash involvement of older drivers in Australia', Accident Analysis & Prevention, vol. 117, pp. 262-269
-
-Zicat, E., Bennett, J.M., Chekaluk, E. & Batchelor, J. 2018, 'Cognitive function and young drivers: The relationship between driving, attitudes, personality and cognition', Transportation research part F: traffic psychology and behaviour, vol. 55, pp. 341-352
-
-\newpage
-
-# (APPENDIX) Appendix {-}
-
-# Appendix: Summary of Dataset and Individual Variables
-
-```{r message = FALSE, error = FALSE}
-
-# check data
-head(data, 5) # no issues
-tail(data, 5) # no issues
-#skim(data) # unfortunately skim function is not compatible with compiling in PDF. 
-# It is only able to compile in HTML. Hence, the glimpse function will be used instead
-# for the purpose of showing a summary of the dataset.
-glimpse(data)
-```
-
-
-
-# Appendix: Subset Dataset in Training and Test Dataset
-
-```{r message = FALSE, error = FALSE, eval = FALSE}
-
-# set seed
-set.seed(5162359)
-
-# split data into training and test set
-split   <- createDataPartition(data$pure_premium, p = 0.8, list = FALSE) # split 80:20
-xtrain0 <- data[split, ]   
-xtest0  <- data[-split, ] 
-
-# check dimensions to ensure 80:20 split
-dim(xtrain0) 
-dim(xtest0)  
-
-```
-
-# Appendix: Exploratory Data Analysis 
-
-```{r eval = FALSE, warning = FALSE, fig.align="center", fig.cap = "Left: Blue bars show average pure premium by driver age band and orange points show number of counts per each band. Right: Blue bars show average pure premium by weight band and orange points show number of counts per each band."}
-
-# create bands 
-data <- data %>% 
-  mutate(driver_age_bnd    = cut(driver_age   , 
-                                 breaks = c(18, 25, seq(35, 95, 10)) , 
-                                 include.lowest = TRUE, 
-                                 dig.lab = 10),
-         weight_bnd        = cut(weight       , 
-                                 breaks = c(seq(800, 1600, 200), Inf), 
-                                 include.lowest = TRUE, 
-                                 dig.lab = 10),
-         prior_claims_bnd  = cut(prior_claims , 
-                                 breaks = c(seq(0, 3, 1), Inf)       , 
-                                 include.lowest = TRUE, 
-                                 dig.lab = 10)) 
-
-# calculate average pure premium and number of counts by driver age
-data_driver_age <- data %>%
-  group_by(driver_age_bnd) %>% 
-  summarise(prem_ave = mean(pure_premium), Count = n())
-
-# calculate average pure premium and number of counts by driver age
-data_weight <- data %>%
-  group_by(weight_bnd) %>% 
-  summarise(prem_ave = mean(pure_premium), Count = n())
-
-# plot average pure premium per driver age
-prem_driver_age <- ggplot(data_driver_age) +
-  geom_col(aes(x=driver_age_bnd, y=prem_ave), fill = "royalblue") + 
-  geom_line(aes(x=driver_age_bnd, y=0.025*Count), size = 1, color="tan1") +
-  geom_point(aes(x=driver_age_bnd, y=0.025*Count), colour = 'tan2', size = 3, shape = 18) +
-  scale_x_discrete(name="Driver Age") +
-  scale_y_continuous(name = "Average Pure Premium", 
-                     breaks=seq(0,350,50), 
-                     sec.axis = sec_axis(~./0.025, name = "Count")) +
-  theme(plot.caption = element_text(hjust = 0))
-
-# plot average pure premium per driver age
-prem_weight <- ggplot(data_weight) +
-  geom_col(aes(x=weight_bnd, y=prem_ave), fill = "royalblue") + 
-  geom_line(aes(x=weight_bnd, y=0.04*Count), size = 1, color="tan1") +
-  geom_point(aes(x=weight_bnd, y=0.04*Count), colour = 'tan2', size = 3, shape = 18) +
-  scale_x_discrete(name="Driver Age") +
-  scale_y_continuous(name = "Average Pure Premium", 
-                     breaks=seq(0,500,50), 
-                     sec.axis = sec_axis(~./0.04, name = "Count")) +
-  theme(plot.caption = element_text(hjust = 0)) 
-
-
-grid.arrange(prem_driver_age, prem_weight, nrow = 1)
+subplot(pdp_plots$dist_to_school, pdp_plots$dist_to_rail_station,
+        nrows = 1,
+        shareY = TRUE,
+        titleY = TRUE)
 
 ```
 
 
-```{r eval = FALSE, warning = FALSE, fig.align="center", out.width="50%", fig.cap = "Box plot of pure premium by NCD level."}
+## Interaction Plots
 
-# plot box plot of pure premium per ncd_level
-prem_ncd <- data %>% filter(pure_premium < 30000) %>%
-  ggplot(aes(x = as.factor(ncd_level), y = pure_premium, colour = as.factor(ncd_level))) +
-  geom_boxplot(fill="skyblue4", show.legend = FALSE) +
-  theme(plot.caption = element_text(hjust = 0)) +
-  labs(x = "NCD Level ", y ="Pure Prmeium")
+One of the main advantages of GBM models is it is easily able to capture interactions between variables. Using the `IML` package, it is possible to quantify the level of pairwise (first order) interaction between each variable captured by the GBM model. This is illustrated in figure 5.5. 
 
-prem_ncd
-
-```
-
-
-# Appendix: Connecting to H2O Cluster
-
-```{r eval = FALSE, message = FALSE, warning = FALSE}
-
-# start h2o connection to cluster
-h2o.init() 
-
-# upload datasets to cluster
-xtrain <- xtrain0 %>% 
-  as.h2o()
-xtest <- xtest0 %>% 
-  as.h2o()
-### NOTE TO MARKER: ###
-# randomly select 1000 rows from the training dataset. Partial dependency plots will be 
-# created based on this subset dataset rather than the original dataset. This is due to
-# computational/hardware restrictions. 
-quiet(xtrain1 <- xtrain0[sample(nrow(xtrain0), 1000), ] %>% 
-  as.h2o())
-
-```
-
-
-# Appendix: createGbm Function
-
-```{r eval = FALSE, message = FALSE}
-
-### Parameters
-# mod            - machine learning model type
-# var            - list of variables to be included in the model
-# grid_id        - unique id for grid created by function. The grid contains a list of all
-#                  models per each combination of hyper-parameters inputted
-# hyper_params   - list of hyper-parameters (min_rows, max_depth, sample_rate, 
-#                  col_sample_rate). A different model is fitted for each combination of 
-#                  hyper-parameters. These models are saved as a grid which can be 
-#                  extracted by its grid_id
-# searchCriteria - specify whether to perform a Cartesian or random grid search. Only 
-#                  required when more than 1 combination of hyperparameters are entered
-# dist           - distribution of loss function
-# nTrees         - number of trees built
-
-
-### Output
-# grid           - contains the grid of models built for each combination of 
-#                  hyper-parameters
-# model          - the best model (lowest MAE) in the grid of models
-# cv_metric_smry - cross-validation summary statistics of the best model
-# pred           - predictions of best model on test dataset 
-# metric_plot    - function which takes in a metric and plots metric against number of 
-#                  trees
-# varimp_plot    - function which takes in a number (n) and plots the top n important 
-#                  variables
-
-# the function also automatically saves the top 4 models to the directory 
-# "dir\\R Models\\"
-
-
-# note: set validation frame to xtest just for the purpose of determining how many 
-# trees to build
-
-# function to create GBM
-createGbm <- function(mod, 
-                      var, 
-                      grid_id, 
-                      hyper_params, 
-                      searchCriteria = NULL, 
-                      dist, 
-                      nTrees) {
-  
-  # fit GBM model
-  grid <- h2o.grid(x = var,
-                   y = res,
-                   training_frame        = xtrain,
-                   algorithm             = mod,
-                   grid_id               = grid_id,
-                   hyper_params          = hyper_params,
-                   search_criteria       = searchCriteria,
-                   nfolds                = nfolds,
-                   fold_assignment       = "Random",
-                   distribution          = dist,
-                   ntrees                = nTrees,
-                   #min_rows             = 10,       # minimum number of rows per node
-                   #max_depth            = 4,        # maximum depth of each tree
-                   learn_rate            = 0.001,
-                   min_split_improvement = 1e-08,
-                   #sample_rate          = 0.9,      # sample 90% of rows per tree
-                   #col_sample_rate      = 0.80,     # sample 80% of columns per split
-                   ## early stopping once the validation MAE doesn't improve by at least 
-                   ## 0.1% for 5 consecutive scoring events
-                   stopping_rounds       = 5,
-                   stopping_tolerance    = 1e-3,
-                   stopping_metric       = metric,
-                   ## score every 10 trees to make early stopping reproducible 
-                   ## (it depends on the scoring interval)
-                   score_tree_interval   = 10,
-                   seed                  = 2020
-                   )
-
-  ## Best Model:
-  # sort the grid models by MAE and select best model
-  sortedGrid     <- h2o.getGrid(grid_id, sort_by = "mae", decreasing = FALSE)
-  topModel       <- h2o.getModel(sortedGrid@model_ids[[1]])
-  # save cross-validation metrics of best model - metrics are the average of each 
-  # 5 holdout folds
-  cv_metric_smry <- topModel@model$cross_validation_metrics_summary
-  # calculate predictions of best model on test dataset
-  gbm_pred       <- h2o.predict(topModel, newdata = xtest) %>% 
-    as_tibble()
-  
-  ## Functions:
-  # output cross-validation metric for the best model
-  cv_metric   <- function(metric) {topModel@model$cross_validation_metrics_summary$mean[rownames(data.frame(topModel@model$cross_validation_metrics_summary)) == metric]}
-  # produce plot of metric vs number of trees for a particular metric for the best model
-  metric_plot <- function(metric_plot) {
-    plot(topModel, timestep = "AUTO", metric = metric_plot)
-    }
-  # create variable importance plot for best model
-  varimp_plot <- function(nvar) {h2o.varimp_plot(topModel, nvar)}  
-
-  # save maximum of top 4 models in grid
-  for (i in 1:length(sortedGrid@model_ids)) {
-    h2o.saveModel(h2o.getModel(sortedGrid@model_ids[[i]]), 
-                  paste0(dir, "R Models\\"))
-    if (i == 4) {
-      break
-    } 
-  }
-  
-  # returns objects as a list
-  return(list("grid"           = sortedGrid, 
-              "model"          = topModel, 
-              "cv_metric_smry" = cv_metric_smry,
-              "cv_metric"      = cv_metric,
-              "metric_plot"    = metric_plot, 
-              "varimp_plot"    = varimp_plot, 
-              "pred"           = gbm_pred
-              )
-        )
-}
-
-```
-
-
-# Appendix: Gamma vs Tweedie Distribution 
-## MAE vs Number of Trees
-
-```{r message = FALSE, eval = FALSE}
-
-# ensure MAE has stabalised 
-mod1$metric_plot("mae") # creates about 3,500 trees before early stopping
-mod2_hpt_4$metric_plot("mae") # creates about 3,300 trees before early stopping 
-
-```
-
-```{r message = FALSE, fig.align = "center", echo = FALSE, out.width = "40%", fig.cap = "MAE vs number of trees built for saturated models. Left: GBM model with gamma distribution. Right: GBM model with Tweedie (1.8) distribution."}
-
-# ensure MAE has stabalised 
-mod1$metric_plot("mae") # creates about 3,500 trees before early stopping
-mod2_hpt_4$metric_plot("mae") # creates about 3,300 trees before early stopping 
-
-```
-
-
-## Actual vs Predicted Plots of Gamma and Tweedie Distribution
-
-```{r echo = FALSE, fig.align = "center", out.width="100%", fig.cap = "Actual vs Predicted plot for saturated model. Left: GBM model with gamma distribution. Right: GBM model with Tweedie (1.8) distribution."}
-
-p1 <- plot_res(xtest0$pure_premium, mod1$pred$predict)
-p2 <- plot_res(xtest0$pure_premium, mod2_hpt_4$pred$predict)
-grid.arrange(p1, p2, nrow = 1)
-
-```
-
-
-# Appendix: Manual Backward Selection of Gamma Model
-
-```{r backward selection, eval = FALSE}
-
-# fit gamma model removing the 5 least important variables  
-var_cut1 <- setdiff(var, tail(h2o.varimp(mod1$model)$variable, 5))
-mod3_gam_cut1 <- createGbm(mod = mod,
-                           var = var_cut1, 
-                           grid_id = "mod3_gam_cut1", 
-                           hyper_params = hyper_params0, 
-                           dist = "gamma", nTrees = 3500
-                           )
-# cut next 3 least important variables - these are the dimensions of the car
-var_cut2 <- setdiff(var_cut1, tail(h2o.varimp(mod3_gam_cut1$model)$variable, 3))
-mod4_gam_cut2 <- createGbm(mod = mod,
-                           var = var_cut2, 
-                           grid_id = "mod4_gam_cut2", 
-                           hyper_params = hyper_params0, 
-                           dist = "gamma", 
-                           nTrees = 3500
-                           )
-# cut next 3 least important variables  
-var_cut3 <- setdiff(var_cut2, tail(h2o.varimp(mod4_gam_cut2$model)$variable, 3))
-mod5_gam_cut3 <- createGbm(mod = mod,
-                           var = var_cut3, 
-                           grid_id = "mod5_gam_cut3", 
-                           hyper_params = hyper_params0, 
-                           dist = "gamma", 
-                           nTrees = 3500
-                           )
-# cut next 2 least important variables  
-var_cut4 <- setdiff(var_cut3, tail(h2o.varimp(mod4_gam_cut2$model)$variable, 2))
-mod6_gam_cut4 <- createGbm(mod = mod,
-                           var = var_cut4, 
-                           grid_id = "mod6_gam_cut4", 
-                           hyper_params = hyper_params0, 
-                           dist = "gamma", 
-                           nTrees = 3500
-                           )
-```
-
-
-# Appendix: Actual vs Predicted Plots of Top Three Tuned Models
-
-```{r echo = FALSE, fig.cap = "Actual vs Predicted plot for tuned models. Top left: Model_6. Top right: Model_15. Bottom left: Model_18."}
-
-p1 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_3$pred$predict)
-p2 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_6$pred$predict)
-p3 <- plot_res(xtest0$pure_premium, mod7_gam_hpt_15$pred$predict)
-grid.arrange(p1, p2, p3, nrow = 2)
-
-```
-
-
-# Appendix: Pairwise Interaction Plots of Final Model
+These plots are useful for building "white-box" model from a "black-box" model. E.g. using the key interactions identified by figure 5.5, you are able to manually insert these as interaction terms when building a GLM on the same dataset. This approach can often result in comparable results despite GLMs being much simplier and more intepretable compared to GBMs.
 
 ```{r eval = FALSE}
-
-# create a data frame with just the features
-xtest_sub <- as.data.frame(xtest)
-features <- xtest_sub[, colnames(xtest_sub) %in% var_cut3]
-# vector with the actual responses
-response <- as.vector(xtest_sub$pure_premium)
-# create custom predict function which is compatible with IML package
-pred <- function(model, newdata)  {
-  results <- as.data.frame(h2o.predict(model, as.h2o(newdata)))
-  return(results[[3L]])
-}
-# create predictor object
-predictor.gbm <- Predictor$new(
-  model       = mod_fin$model, 
-  data        = features, 
-  y           = response, 
-  predict.fun = pred
-)
-interact.gbm.year <- Interaction$new(predictor.gbm, feature = "year") %>% plot()
-interact.gbm.region <- Interaction$new(predictor.gbm, feature = "region") %>% plot()
+nano_fin <- nano::nano_interaction(nano_fin, 4, "longitude")
 
 ```
+
+```{r echo = FALSE, fig.height=3, fig.widtht=5, fig.cap = "Plot of pairwise interaction between longitude and all other variables captured by the final mode."}
+
+ice_4 <- readRDS(paste0(path, "/ice_4"))
+fig <- plot_ly(x = ice_4$interaction, 
+               y = factor(ice_4$feature, levels = ice_4$feature[order(ice_4$interaction)]),
+               type = 'bar', 
+               orientation = 'h') %>% 
+  layout(xaxis = list(title = "Interaction",
+                      hoverformat = ".2f"))
+fig
+
+```
+
+# Save Nano Object
+
+After all modelling has been completed, the `nano` object can be saved in a chosen directory as shown below. It can then be loaded again by using the `nano_load` function. Importantly, the `nano` object can only be saved in an empty directory, otherwise it will not be loaded correctly when running `nano_load`. After the `nano` has been correctly saved, to terminate the connection to the h2o cluster, run `nano_shutdown`. Running this function will remove all grids and models form the cluster, hence only run this once the `nano` object has been saved. 
+
+```{r save nano object, eval = FALSE}
+nano::nano_save(nano_fin, path)
+nano::nano_shutdown()
+```
+
+
+
+
+
 

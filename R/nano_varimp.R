@@ -1,6 +1,6 @@
 #' @title Calculate and Plot Variable Importance
 #' @description Calculates and plots variable importance of model in nano object.
-#' @import h2o
+#' @rawNamespace import(h2o, except = c(hour, week, month, year))
 #' @param nano nano object containing models
 #' @param model_no the position of the model in the list of models in the nano object. If not 
 #' entered, the last model is taken by default.

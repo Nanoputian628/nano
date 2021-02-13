@@ -70,16 +70,16 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
     missing_smry <- "Dataset has no missing values."
   }
   
-  if (sum(blank_num) != 0) {
-    blank_plot <- plot(blank_num) # replace with own user defined plotting functions
-  } else {
-    blank_plot <- "Dataset has no blanks"
-  }
-  if (sum(na_num) != 0) {
-    na_plot <- plot(na_num) # replace with own user defined plotting functions
-  } else {
-    na_plot <- "Dataset has no nas"
-  }
+  # if (sum(blank_num) != 0) {
+  #   blank_plot <- plot(blank_num) # replace with own user defined plotting functions
+  # } else {
+  #   blank_plot <- "Dataset has no blanks"
+  # }
+  # if (sum(na_num) != 0) {
+  #   na_plot <- plot(na_num) # replace with own user defined plotting functions
+  # } else {
+  #   na_plot <- "Dataset has no nas"
+  # }
   
   # duplicates in dataset
   dup_index <- duplicated(data) | duplicated(data, fromLast = TRUE)
@@ -124,10 +124,10 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
       outlier_cols <- gsub("^, +|, +$", "", outlier_cols)
       outlier_dat <- data.table::copy(data_mod)[outlier_row][
         , outlier_cols := outlier_cols]
-      outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
+#      outlier_plot <- plot(outlier_num) # replace with own user defined plotting functions
     } else {
       outlier_dat <- "Dataset has no outliers!"
-      outlier_plot <- "Dataset has no outliers!"
+#      outlier_plot <- "Dataset has no outliers!"
     }
     if (!quiet) {
       message("Dataset has ", sum(outlier_num), " outliers.")
@@ -146,10 +146,10 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
       special_row <- union(special_row, special_index[[var]])
     }
     special_dat <- copy(data_mod)[special_row][, special_var, with = FALSE]
-    special_plot <- plot(special_num) # replace with own user defined plotting functions
+#    special_plot <- plot(special_num) # replace with own user defined plotting functions
   } else {
     special_dat <- "Dataset has no special characters!"
-    special_plot <- "Dataset has no special characters!"
+#    special_plot <- "Dataset has no special characters!"
   }
   if (!quiet) {
     message("Dataset has ", sum(special_num), " special characters.")
@@ -163,12 +163,12 @@ cleanliness_smry <- function(data, ignore = c(), outlier_sd = 3, quiet = FALSE) 
        outliers      = outlier_num ,
        outlier_rows  = outlier_dat ,
        special_chars = special_num ,
-       special_rows  = special_dat ,
-       plots = list(blanks        = blank_plot  ,
-                    nas           = na_plot     ,
-                    outliers      = outlier_plot,
-                    special_chars = special_plot
-       )
+       special_rows  = special_dat 
+       # plots = list(blanks        = blank_plot  ,
+       #              nas           = na_plot     ,
+       #              outliers      = outlier_plot,
+       #              special_chars = special_plot
+       # )
   )
   
 }

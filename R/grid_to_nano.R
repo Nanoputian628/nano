@@ -1,7 +1,7 @@
 #' @title Convert Grid to Nano Object  
 #' @description Converts a grid in a nano object to a separate nano object. 
 #' @param nano nano object containing the grid to be converted to a new nano object.
-#' @param grid_no a numeric. Vector containing positions of grids to be converted to a nano
+#' @param grids_no a numeric. Vector containing positions of grids to be converted to a nano
 #'  object.
 #' @param n_top_model a numeric. Vector of the n top number of models to select from each grid.
 #' @return a `nano` object
@@ -47,7 +47,7 @@
 
 
 grid_to_nano <- function(nano, grids_no = nano$n_model, 
-                         n_top_model = length(nano$grid[[grid_no]]@model_ids)) {
+                         n_top_model = length(nano$grid[[grids_no]]@model_ids)) {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 

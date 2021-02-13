@@ -284,7 +284,7 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   nano$grid[[nano$n_model]]   <- nano:::create_Grid(grid)
   nano$model[[nano$n_model]]  <- h2o::h2o.getModel(grid@model_ids[[1]])
   nano$metric[[nano$n_model]] <- nano:::model_metrics(nano$model[[nano$n_model]], data)
-  nano$data[[nano$n_model]]   <- data
+  nano$data[[nano$n_model]]   <- data.table::copy(data)
   nano$meta[[nano$n_model]]   <- nano:::model_meta(nano$model[[nano$n_model]], 
                                                   h2o::as.h2o(train))
   nano$grid[[nano$n_model]]@meta$description <- grid_description

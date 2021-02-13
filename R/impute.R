@@ -151,7 +151,7 @@ impute <- function(data, method = "mice", mice_method = NULL, pred_ignore = c(),
     # perform actual imputation
     set.seed(seed)
     imputed <- nano:::quiet(mice::mice(data, method = meth, predictorMatrix = pred_matrix, m = 1))
-    data <- mice::complete(imputed)
+    data <- nano:::quiet(mice::complete(imputed))
     setDT(data)
     if (sum(is.na(data[, setdiff(names(data), impute_ignore), with = FALSE])> 0)) {
       cat("The following variables still have missing values after imputation:\n")

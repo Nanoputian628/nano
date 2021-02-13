@@ -68,3 +68,45 @@ fig <- fig %>% layout(
   xaxis = list(title="x")
 )
 fig
+
+
+
+
+###################################
+
+pdp_plot <- function(nano, model_nos, vars) {
+  
+  #########
+pdp <- rbind(nano$pdp$pdp_1, nano$pdp$pdp_2, nano$pdp$pdp_3, nano$pdp$pdp_4)
+for (i in model_nos) {
+  #action
+}
+pdp <- pdp[, .(var_band, mean_response, var)]
+pdp[, model_id := rep(c(nano$model$model_1@model_id, nano$model$model_2@model_id, nano$model$model_3@model_id), each = 180)]
+###########
+
+  pdps <- rep(list(NA), length(vars))
+  for (var in vars) {
+    pdp <- as.data.frame(pdp)
+    dat <- pdp[pdp$var == var,]
+    fig <- nano:::quiet(plot_ly(data = dat,
+                                x = ~var_band, 
+                                y = ~mean_response, 
+                                group_by = ~model_id,
+                                type = "scatter", 
+                                color = ~model_id, 
+                                mode = "lines+markers") %>% 
+                          layout(xaxis = list(title = var)))
+    pdps[[var]] <- fig
+  }
+  return(pdps)
+}
+
+# plots pdps
+pdp_plots <- pdp_plot(pdp, unique(pdp$var))
+
+
+pdp_plot(nano, model_nos, vars)
+
+
+

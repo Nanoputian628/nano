@@ -128,10 +128,6 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
         pdp <- data.table::data.table(pdps)
         pdp[, "target" := "Partial Depencence"]
       }
-      pdp[["text"]] <- paste0("Feature Value: ", 
-                              pdp[[var]], "\n", "Mean Response: ", 
-                              pdp[["mean_response"]], "\n", "Target: ", 
-                              pdp[["target"]])
       pdp[["var"]] <- var
       # change column name for variable name to "var_band". This is to ensure all
       # datasets have the same column names which allows them to be appended 
@@ -141,12 +137,6 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
   }
   pdp_all[[1]] <- NULL
   out <- do.call(rbind, lapply(pdp_all, data.table::as.data.table))
-  # out <- pdp_all[[1]] 
-  # if (length(pdp_all) > 1) {
-  #   for (i in 2:length(pdp_all)) {
-  #     out <- rbind(out, pdp_all[[i]])
-  #   }
-  # }
   return(out)
 }
 

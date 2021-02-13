@@ -97,11 +97,14 @@ nano_interaction <- function(nano, model_no = nano$n_model, vars, plot = FALSE) 
     model <- nano$model[[i]]
     # create a data.table with just the features
     data <- nano$data[[i]][, model@parameters$x, with = FALSE]
+    # remove date variables which is not compatible with iml package
+    data <- data[, sapply(data, function(x) !inherits(x, 'Date')), with = FALSE]
     # vector with the actual responses
     res <- as.vector(nano$data[[i]][, model@parameters$y, with = FALSE])
     # create custom predict function which is compatible with IML package
     pred <- function(model, data)  {
-      results <- as.data.frame(h2o::h2o.predict(model, h2o::as.h2o(data)))
+      results <- as.data.frame(nano:::quiet(
+        h2o::h2o.predict(model, h2o::as.h2o(data))))
       return(results[[3L]])
     }
     # create predictor object
