@@ -394,3 +394,19 @@ nano_increase <- function(nano) {
   return(nano)
 }
 
+
+# check if already connection to h2o exists
+check_h2o_connection <- function() {
+  assign("is_h2o_running", TRUE, .GlobalEnv)
+  
+  tryCatch(
+    
+    expr = {
+      h2o::h2o.init(startH2O = FALSE)
+    },
+    error = function(e){ 
+      assign("is_h2o_running", FALSE, .GlobalEnv)
+    }
+  )
+  return(is_h2o_running)
+}

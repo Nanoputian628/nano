@@ -6,7 +6,7 @@
 #   https://www.h2o.ai/blog/finally-you-can-plot-h2o-decision-trees-in-r/
 # - See what other plots can be produced for model explainability e.g. shapl
 #   http://docs.h2o.ai/h2o/latest-stable/h2o-docs/explain.html
-# - Implement target encoding for nano_grid and nano_automl
+# - Implement target encoding for nano_grid and nano_automl - NEED TO REVIEW 
 #   http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/target-encoding.html
 # - Look through H2O for features to implement and look through blogs/tutorials
 #   https://www.h2o.ai/blog/

@@ -10,8 +10,8 @@
 #' @param unmatched_bucket a character or a list defining the bucket name for unmatched entries.
 #' @param trunc_left a logical specifying whether the band to \code{-Inf} should be created.  
 #' @param trunc_right a logical specifying whether the band to \code{Inf} should be created.
-#' @param include_left a logical specifying if should include the left or right endpoint for each
-#' interval.
+#' @param include_left a logical specifying if should include the left or right endpoint for 
+#' each interval.
 #' @param split_or_fold a numeric. If between 0 and 1, dataset is split into training and 
 #' testing dataset. The number specifies the percentage of rows to be kept for training. If 1,
 #' dataset is not split and all rows kept for training. If an integer greater than 1,
@@ -48,6 +48,18 @@
 #' @param used for determining whether building a regression or classification model. If number
 #' of unique levels in `response` is less than `thresh`, then classification, otherwise 
 #' regression model.  
+#' @param target_encode a logical specifying whether to perform target encoding on factor 
+#' variables.
+#' @param encode_cols a character vector. Factor type variables to be target encoded.
+#' @param blend a logical specifying whether the target average should be weighted based on
+#' the count of the group.
+#' @param encode_inflec a numeric. This determines half of the minimal sample size for which
+#' the the estimate based on the sample in the particular level is completely trusted. This 
+#' value is only valid when \code{blend = TRUE}. 
+#' @param smoothing a numeric. The smoothing value is used for blending. Only valid when 
+#' \code{blend = TRUE}.
+#' @param noise a numeric. Specify the amount of random noise that should be added to the target
+#' average in order to prevent overfitting. Set to 0 to disable noise.
 #' @return List containing prepared dataset with various other metrics and summaries depending
 #' on the arguments entered.
 #' @details The purpose of this function is to provide a general and off-the-shelf process to
@@ -57,7 +69,7 @@
 #' these process and their arguments, see the following functions respectively contained in the 
 #' `nano` package: band_data, impute, vif_step and balance_data.
 #' 
-#' This function also provides the option to: split the dataset into k folds, training, testing, 
+#' This function also provides the option to: split the dataset into k folds, training, testing,
 #' holdout dataset via the `split_or_fold` and `holdout_ratio` arguments. To split dataset into
 #' training and testing dataset, set `split_or_fold` to be a number between 0 and 1. To divide the
 #' dataset into k folds, set `split_or_fold` to be an integer greater than 1. If the dataset has
@@ -67,18 +79,19 @@
 #' into k folds (i.e. `split_or_fold` != 1). 
 #' 
 #' Other features available in this function are: remove variables with low variance via the 
-#' `rm_low_var` argument and scale numeric variables via the `scale` argument. 
+#' `rm_low_var` argument, target encoding via the `target_encode` argument and scale numeric 
+#' variables via the `scale` argument. 
 #' 
 #' @examples 
 #' \dontrun{
 #' if(interactive()){
 #'  data(property_prices)
-#'  data_prep(data = property_prices, 
+#'  data_prep(data          = property_prices, 
 #'            split_or_fold = 0.7, 
 #'            holdout_ratio = 0.1, 
-#'            impute = TRUE, 
-#'            vif_select = TRUE,
-#'            quiet = TRUE)
+#'            impute        = TRUE, 
+#'            vif_select    = TRUE,
+#'            quiet         = TRUE)
 #'  }
 #' }
 #' @rdname data_prep
@@ -92,7 +105,9 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
                       impute_ignore = c(), rm_outliers = Inf, vif_select = FALSE, 
                       vif_ignore = c(), vif_thresh = 5, balance = FALSE, balance_class, 
                       balance_method = "under", balance_prop = 0.5, scale = FALSE, seed = 628,
-                      quiet = FALSE, thresh = 10, retain_names = TRUE) {
+                      quiet = FALSE, thresh = 10, retain_names = TRUE, target_encode = FALSE,
+                      encode_cols, blend = FALSE, encode_inflec = 50, smoothing = 20, 
+                      noise) {
   
   # set stopwatch
   nano:::tic(id = "data_prep")
@@ -179,6 +194,17 @@ data_prep <- function(data, response, intervals = NULL, buckets = NULL, na_bucke
          call. = FALSE)
   }
   
+  if (!is.logical(target_encode)) {
+    stop("`target_encode` must either be TRUE or FALSE.",
+         call. = FALSE)
+  }
+  
+  if (!is.logical(blend)) {
+    stop("`blend` must either be TRUE or FALSE.",
+         call. = FALSE)
+  }
+  
+
   data <- nano::tidy_data(data, thresh, retain_names, response)
   
   # summary on how clean the dataset is
@@ -376,6 +402,64 @@ Testing dataset: ", nrow(data_test), " rows."))
       }    
     } 
   }
+  
+  # target encoding 
+  if (target_encode) {
+    
+    # start h2o connection if no existing connection 
+    is_h2o_running <- nano:::check_h2o_connection()
+    if (!is_h2o_running) nano::nano_init()
+
+    # set default value for noise if missing 
+    if (missing(noise)) {
+      if (model_type == "Regression") {
+        noise <- range(data_train[[response]]) * 0.01
+      } else {
+        noise <- 0
+      }
+    }
+    
+    if (!missing(encode_cols)) {
+      # adjust encode_cols 
+      encode_cols <- intersect(encode_cols, names(data_train))
+      # check if all are factor types
+      if (!all(encode_cols %in% names(data_train)[sapply(data_train, is.factor)])) {
+        stop("`encode_cols` must be factor variables in dataset.",
+             call. = FALSE)
+      }  
+    } else {
+      # if missing, set to all factor variables
+      encode_cols <- names(data_train)[sapply(data_train, is.factor)]
+    }
+    
+    # encode factor variables
+    target_encoder <- do.call(h2o::h2o.targetencoder, 
+                              c(list(training_frame = h2o::as.h2o(data_train),
+                                     x              = encode_cols,
+                                     y              = response,
+                                     blending       = blend,
+                                     noise          = noise, 
+                                     seed           = seed),
+                                list(fold_column           = "fold",
+                                     data_leakage_handling = "kFold")["fold" %in% names(data_train)],
+                                list(inflection_point = encode_inflec,
+                                     smoothing        = smoothing)[blend]))
+    
+    # new target encoded dataset
+    data_train <- data.table::as.data.table(h2o::h2o.transform(target_encoder, 
+                                                               h2o::as.h2o(data_train), 
+                                                               as_training = TRUE))
+    data_test <- data.table::as.data.table(h2o::h2o.transform(target_encoder, 
+                                                              h2o::as.h2o(data_test), 
+                                                              noise = 0))
+    # remove original variables before target encoding
+    data_train[, (encode_cols) := NULL]
+    data_test[, (encode_cols) := NULL]
+    
+    # shutdown h2o connection if did not exist beforehand
+    if (!is_h2o_running) nano::nano_shutdown(prompt = FALSE)
+  } 
+  
   
   # balance training data
   if (balance) {

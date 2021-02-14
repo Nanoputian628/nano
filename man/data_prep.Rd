@@ -35,7 +35,13 @@ data_prep(
   seed = 628,
   quiet = FALSE,
   thresh = 10,
-  retain_names = TRUE
+  retain_names = TRUE,
+  target_encode = FALSE,
+  encode_cols,
+  blend = FALSE,
+  encode_inflec = 50,
+  smoothing = 20,
+  noise
 )
 }
 \arguments{
@@ -55,8 +61,8 @@ data_prep(
 
 \item{trunc_right}{a logical specifying whether the band to \code{Inf} should be created.}
 
-\item{include_left}{a logical specifying if should include the left or right endpoint for each
-interval.}
+\item{include_left}{a logical specifying if should include the left or right endpoint for
+each interval.}
 
 \item{split_or_fold}{a numeric. If between 0 and 1, dataset is split into training and
 testing dataset. The number specifies the percentage of rows to be kept for training. If 1,
@@ -111,6 +117,24 @@ and 1 standard deviation.}
 
 \item{quiet}{a logical specifying whether messages should be output to the console.}
 
+\item{target_encode}{a logical specifying whether to perform target encoding on factor
+variables.}
+
+\item{encode_cols}{a character vector. Factor type variables to be target encoded.}
+
+\item{blend}{a logical specifying whether the target average should be weighted based on
+the count of the group.}
+
+\item{encode_inflec}{a numeric. This determines half of the minimal sample size for which
+the the estimate based on the sample in the particular level is completely trusted. This
+value is only valid when \code{blend = TRUE}.}
+
+\item{smoothing}{a numeric. The smoothing value is used for blending. Only valid when
+\code{blend = TRUE}.}
+
+\item{noise}{a numeric. Specify the amount of random noise that should be added to the target
+average in order to prevent overfitting. Set to 0 to disable noise.}
+
 \item{used}{for determining whether building a regression or classification model. If number
 of unique levels in \code{response} is less than \code{thresh}, then classification, otherwise
 regression model.}
@@ -141,18 +165,19 @@ holdout dataset can only be created if the dataset has been split into training 
 into k folds (i.e. \code{split_or_fold} != 1).
 
 Other features available in this function are: remove variables with low variance via the
-\code{rm_low_var} argument and scale numeric variables via the \code{scale} argument.
+\code{rm_low_var} argument, target encoding via the \code{target_encode} argument and scale numeric
+variables via the \code{scale} argument.
 }
 \examples{
 \dontrun{
 if(interactive()){
  data(property_prices)
- data_prep(data = property_prices, 
+ data_prep(data          = property_prices, 
            split_or_fold = 0.7, 
            holdout_ratio = 0.1, 
-           impute = TRUE, 
-           vif_select = TRUE,
-           quiet = TRUE)
+           impute        = TRUE, 
+           vif_select    = TRUE,
+           quiet         = TRUE)
  }
 }
 }
