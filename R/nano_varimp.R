@@ -57,7 +57,7 @@
 #' @rdname nano_varimp
 #' @export 
 
-nano_varimp <- function (nano, model_no = NA, plot = TRUE, n_var = 10, subtitle = NA, save = FALSE, 
+nano_varimp <- function (nano, model_no = NA, plot = FALSE, n_var = 10, subtitle = NA, save = FALSE, 
                          subdir = NA, file_name = "viz_importance.png") {
 
   if (class(nano) != "nano") {
@@ -104,32 +104,17 @@ nano_varimp <- function (nano, model_no = NA, plot = TRUE, n_var = 10, subtitle 
     }
   }
 
-  # colours <- "deepskyblue"
-  # out <- data.frame(var = var, imp = 100 * imp, Type = colours)
-  # if (length(var) < limit) 
-  #   limit <- length(var)
-  # output <- out[1:limit, ]
-  # p <- ggplot(output, aes(x = reorder(.data$var, .data$imp), 
-  #                         y = .data$imp, label = formatNum(.data$imp, 1))) + geom_col(aes(fill = .data$Type), 
-  #                                                                                     width = 0.08, colour = "transparent") + geom_point(aes(colour = .data$Type), 
-  #                                                                                                                                        size = 6.2) + coord_flip() + geom_text(hjust = 0.5, size = 2.1, 
-  #                                                                                                                                                                               inherit.aes = TRUE, colour = "white") + labs(title = paste0("Most Relevant Variables (top ", 
-  #                                                                                                                                                                                                                                           limit, " of ", length(var), ")"), x = NULL, 
-  #                                                                                                                                                                                                                            y = NULL) + scale_y_continuous(position = "right", 
-  #                                                                                                                                                                                                                                                           expand = c(0, 0), limits = c(0, 1.03 * max(output$imp))) + 
-  #   theme_lares2()
-  # if (length(unique(output$Type)) == 1) {
-  #   p <- p + geom_col(fill = colours, width = 0.2, colour = "transparent") + 
-  #     geom_point(colour = colours, size = 6) + guides(fill = FALSE, 
-  #                                                     colour = FALSE) + geom_text(hjust = 0.5, size = 2, 
-  #                                                                                 inherit.aes = TRUE, colour = "white")
-  # }
-  # if (!is.na(model_name)) 
-  #   p <- p + labs(caption = model_name)
-  # if (!is.na(subtitle)) 
-  #   p <- p + labs(subtitle = subtitle)
-  # if (save) 
-  #   export_plot(p, file_name, subdir = subdir, width = 6, 
-  #               height = 6)
+  
+  if (plot) {
+    # if multiple models selected, plot heatmap instead
+    # m <- matrix(rnorm(9), nrow = 3, ncol = 3)
+    # fig <- plot_ly(
+    #   x = c("a", "b", "c"), y = c("d", "e", "f"),
+    #   z = m, type = "heatmap"
+    # )
+    # 
+    # fig
+  }
+  
   return(nano)
 }

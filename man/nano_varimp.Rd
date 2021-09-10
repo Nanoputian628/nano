@@ -7,7 +7,7 @@
 nano_varimp(
   nano,
   model_no = NA,
-  plot = TRUE,
+  plot = FALSE,
   n_var = 10,
   subtitle = NA,
   save = FALSE,

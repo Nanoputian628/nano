@@ -413,7 +413,7 @@ Testing dataset: ", nrow(data_test), " rows."))
     # set default value for noise if missing 
     if (missing(noise)) {
       if (model_type == "Regression") {
-        noise <- range(data_train[[response]]) * 0.01
+        noise <- (max(data_train[[response]]) - min(data_train[[response]])) * 0.01
       } else {
         noise <- 0
       }

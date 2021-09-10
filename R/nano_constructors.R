@@ -197,10 +197,12 @@ create_nano <- function(grid        = rep(list(NA)      , 10),
   # function to calculate number of non NA elements in a list
   len <- function(list) length(list) - sum(sapply(list, typeof) == "logical")
   
-  if (n_model != 0 & !all(grepl("H2O", sapply(model, function(x) as.vector(class(x)))[1:n_model])) & !all(grepl("Model", sapply(model, function(x) as.vector(class(x)))[1:len(model)]))) {
-    stop("All `model` values must be a H2O model", 
-         call. = FALSE
-    )
+  if (!missing(model)) {
+    if (n_model != 0 & !all(grepl("H2O", sapply(model, function(x) as.vector(class(x)))[1:n_model])) & !all(grepl("Model", sapply(model, function(x) as.vector(class(x)))[1:len(model)]))) {
+      stop("All `model` values must be a H2O model", 
+           call. = FALSE
+      )
+    }
   }
   
   if (n_model != 0 & !all(lapply(data, function(x) class(x)[1])[1:len(data)] == "data.table")) {

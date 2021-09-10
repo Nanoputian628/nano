@@ -40,7 +40,7 @@ nano_predict <- function(nano, model_no, data_type = "train", fold = NULL) {
          call. = FALSE)
   }
   
-  if (model_no %% 2 != 0 | model_no < 0 | model_no > nano$n_model) {
+  if (model_no %% 1 != 0 | model_no < 0 | model_no > nano$n_model) {
     stop("`model_no` must be an integer between 0 and nano$n_model.",
          call. = FALSE)
   }

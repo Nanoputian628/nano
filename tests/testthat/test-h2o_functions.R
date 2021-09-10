@@ -7,7 +7,7 @@ library(data.table)
 data("property_prices")
 var <- setdiff(colnames(property_prices), c("sale_price"))
 
-h2o.init()
+h2o::h2o.init()
 train <- as.h2o(property_prices)
 
 hyper_params1 = list(ntrees = 1:2)
@@ -224,7 +224,31 @@ test_that("variables are correct", {
 })
 
 
+
+
+# test nano_tree_plot ----
+
+tree <- try(nano_tree_plot(nano, 1, 1))
+test_that("no error in creating nano object from 'nano_tree_plot' function", {
+  expect_false(inherits(tree, "try-error"))
+})
+
+
+
+# test nano_predict ----
+
+pred <- try(nano_predict(nano, 1, "train"))
+test_that("no error in creating nano object from 'nano_predict' function", {
+  expect_false(inherits(pred, "try-error"))
+})
+
+
+
+
 h2o.removeAll()
 h2o.shutdown(prompt = FALSE)
+
+
+
 
 

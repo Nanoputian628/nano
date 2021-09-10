@@ -156,14 +156,14 @@ nano_tree_plot <- function(nano, grid_no = nano$n_model, tree_number = 1, tree_c
   GetFontName <- function(node) {switch(node$type, 
                                         split = 'Palatino-bold', 
                                         leaf  = 'Palatino')}
-  SetEdgeStyle(tree_diag, fontname = 'Palatino-italic', 
-               label = GetEdgeLabel, labelfloat = TRUE,
-               fontsize = "26", fontcolor='royalblue4')
-  SetNodeStyle(tree_diag, fontname = GetFontName, shape = GetNodeShape, 
-               fontsize = "26", fontcolor='royalblue4',
-               height ="0.75", width ="1")
+  data.tree::SetEdgeStyle(tree_diag, fontname = 'Palatino-italic', 
+                          label = GetEdgeLabel, labelfloat = TRUE,
+                          fontsize = "26", fontcolor='royalblue4')
+  data.tree::SetNodeStyle(tree_diag, fontname = GetFontName, shape = GetNodeShape, 
+                          fontsize = "26", fontcolor='royalblue4',
+                          height ="0.75", width ="1")
   
-  SetGraphStyle(tree_diag, rankdir = "LR", dpi = 70.)
+  data.tree::SetGraphStyle(tree_diag, rankdir = "LR", dpi = 70.)
   
   return(tree_diag)
 }  

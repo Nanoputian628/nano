@@ -15,7 +15,8 @@ colnames(data) <- colnames_snk
 rm_vars <- c("V1", "log_sale_price", "crime_density", "dist_to_coastline", "dist_to_rail_line", "dist_to_tunnel", "dist_to_gPO", "NO2", "SO2", "dist_to_ferry")   
 data[, sale_price := exp(log_sale_price)
      ][, sale_qtr := as.factor(sale_qtr)
-       ][, (rm_vars) := NULL]
+       ][, post_code := as.factor(post_code)
+        ][, (rm_vars) := NULL]
 data <- data[sale_price < 2000000 | is.na(sale_price)]
 
 set.seed(2020)
@@ -39,8 +40,6 @@ nano <- nano::nano_grid(response     = response,
                         nfolds       = 5, 
                         hyper_params = hyper_params)
 
-nano$metri$metric_1
-
 
 ## GBM
 hyper_params <- list(ntrees                   = 500,
@@ -61,7 +60,6 @@ nano <- nano::nano_grid(nano         = nano,
                         nfolds       = 5, 
                         hyper_params = hyper_params)
 
-nano::nano_metrics(nano, 1:2, "cv")
 plot(nano$model$model_2, timestep = "number_of_trees", metric = "deviance") 
 
 
@@ -73,7 +71,6 @@ nano <- nano::nano_grid(nano         = nano,
                         distribution = "gamma",
                         data         = data, 
                         nfolds       = 5)
-nano::nano_metrics(nano, 1:3, "cv")
 plot(nano$model$model_3, timestep = "epochs", metric = "deviance") 
 
 
@@ -102,6 +99,37 @@ h2o.coef_norm(nano$model$model_5)
 nano$model$model_5@model$coefficients_table
 nano::nano_metrics(nano, 1:5, "cv")
 
+## target encoding on postcode
+data_process <- data_prep(data          = data,
+                          response      = response,
+                          split_or_fold = 5,
+                          target_encode = TRUE,
+                          blend         = TRUE,
+                          encode_cols   = "post_code",
+                          noise         = 20000)
+data_te <- data.table::copy(data_process$data)
+
+hyper_params <- list(ntrees                   = 500,
+                     max_depth                = 5,
+                     min_rows                 = 10,
+                     distribution             = "gamma",
+                     learn_rate               = 0.01,
+                     sample_rate              = 0.8,
+                     col_sample_rate          = 0.6,
+                     col_sample_rate_per_tree = 0.8, 
+                     min_split_improvement    = 1e-05)
+
+nano <- nano::nano_grid(nano         = nano,
+                        response     = response, 
+                        grid_id      = "gbm_te",
+                        algo         = "gbm", 
+                        data         = data_te,
+                        nfolds       = 5,
+                        hyper_params = hyper_params)
+nano::nano_metrics(nano, 1:6, "cv")
+
+
+
 ## Naive Bayes (not comparable with other models but for the purpose of illustration)
 
 nano <- nano::nano_grid(nano         = nano,
@@ -117,7 +145,6 @@ nano::nano_metrics(nano, 6, "cv")
 nano <- nano::nano_pdp(nano     = nano,
                        model_no = 1:5,
                        vars     = c("longitude", "crime_rate"))
-nano$pdp$pdp_5
 
 pdp <- rbind(nano$pdp$pdp_1, nano$pdp$pdp_2, nano$pdp$pdp_3, nano$pdp$pdp_4, nano$pdp$pdp_5)
 pdp <- pdp[, .(var_band, mean_response, var)]
