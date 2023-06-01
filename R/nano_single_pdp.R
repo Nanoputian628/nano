@@ -108,7 +108,6 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
   # for each variable, calculate pdp and store in list
   pdp_all <- list(NA)
   for (var in vars) {
-    h2o:::with_no_h2o_progress({
       pdps <- h2o::h2o.partialPlot(object = models_info$get_model(models_info$model_ids[[1]]),
                                    data = data, 
                                    cols = var, 
@@ -123,8 +122,7 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
           pdps[[idx]][, "target" := targets[[idx]]]
         }
         pdp <- do.call(rbind, lapply(pdps, data.table::as.data.table))
-      }
-      else {
+      } else {
         pdp <- data.table::data.table(pdps)
         pdp[, "target" := "Partial Depencence"]
       }
@@ -133,7 +131,6 @@ nano_single_pdp <- function (model, data, vars, max_levels = 30, row_index = -1)
       # datasets have the same column names which allows them to be appended 
       names(pdp)[1] <- "var_band"
       pdp_all[[var]] <- pdp
-    })
   }
   pdp_all[[1]] <- NULL
   out <- do.call(rbind, lapply(pdp_all, data.table::as.data.table))

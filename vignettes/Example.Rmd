@@ -18,6 +18,7 @@ header-includes:
 # load libraries
 library(nano)
 library(data.table)
+library(skmir)
 library(plotly)
 library(h2o)
 library(kableExtra)
