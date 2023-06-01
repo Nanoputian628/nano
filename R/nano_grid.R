@@ -10,7 +10,7 @@
 #' @param test a data.frame containing testing dataset. If this is provided, the `train_test`,
 #' `fold_column` and `nfolds` arguments cannot be used.
 #' @param train_test a character. Variable in `data` which contains split for training, 
-#' testing and holdout datasets (optional). Can only have the values: "training", "test", 
+#' testing and holdout datasets (optional). Can only have the values: "train", "test", 
 #' "holdout".
 #' @param grid_id a character. Unique id for created grid.
 #' @param ignore_vars vector of characters. Variables in the dataset which should not be used
@@ -154,6 +154,13 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   # increase nano space if required
   nano <- nano:::nano_increase(nano)
   
+  # determine type of model
+  res_levels <- unique(data[[which(colnames(data) == response)]])
+  model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
+  # for classification model, convert response variable to factor type
+  if (model_type == "Classification") data[[response]] <- as.factor(data[[response]])
+  if (!quiet) message("MODEL TYPE: ", model_type)
+  
   ## create training and testing datasets
   # initialise testing dataset
   if (missing(test)) test <- NA
@@ -163,6 +170,8 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   if (!is.na(train_test)) {
     train <- data[get(train_test) == "train"]
     test  <- data[get(train_test) == "test"]
+    # if "test" not specified in train_test then set test to NA
+    if (nrow(test) == 0) test <- NA
   }
   
   # if nfolds specified, assign folds to rows
@@ -179,11 +188,6 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
                    if (!missing(train_test))    train_test,
                    if (!missing(weight_column)) weight_column,
                    if (!missing(fold_column))   fold_column)
-  
-  # determine type of model
-  res_levels <- unique(train[[which(colnames(train) == response)]])
-  model_type <- ifelse(length(res_levels) <= thresh, "Classification", "Regression")
-  if (!quiet) message("MODEL TYPE: ", model_type)
   
   # default stopping metric
   if (is.null(stopping_metric)) {
@@ -263,7 +267,7 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
       # rename train_test to data_id for consistency
       names(data)[names(data) == train_test] <- "data_id" 
       if (!quiet) {
-        message(paste0("Renamed ", train_test, "to data_id."))
+        message(paste0("Renamed ", train_test, " to data_id."))
       }
     }
   }
@@ -273,7 +277,7 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
     if (fold_column != "fold") {
       names(data)[names(data) == fold_column] <- "fold" 
       if (!quiet) {
-        message("Renaming ", fold_column, "to fold.")
+        message("Renaming ", fold_column, " to fold.")
       }
     }
   }

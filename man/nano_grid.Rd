@@ -51,7 +51,7 @@ holdout data, in which case, the \code{train_test} must be specified.}
 \code{fold_column} and \code{nfolds} arguments cannot be used.}
 
 \item{train_test}{a character. Variable in \code{data} which contains split for training,
-testing and holdout datasets (optional). Can only have the values: "training", "test",
+testing and holdout datasets (optional). Can only have the values: "train", "test",
 "holdout".}
 
 \item{grid_id}{a character. Unique id for created grid.}
