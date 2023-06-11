@@ -7,18 +7,18 @@
 #' @param row_index a numeric vector of dataset rows numbers to be used to calculate PDPs. To
 #' use entire dataset, set to -1.
 #' @param plot a logical specifying whether the variable importance should be plotted.
-#' @param subtitle subtitle for the plot.
 #' @param save a logical specifying whether the plot should be saved into working directory.
-#' @param subdir sub directory in which the plot should be saved.
-#' @param file_name file name of the saved plot.   
-#' @return nano object with variable importance of specified models calculated. Also returns a 
-#' plot if \code{plot = TRUE}.
-#' @details Function first checks if the variable importance of the specified model has already 
-#' been calculated (by checking in the list \code{nano$varimp}). If it has not been calculated, 
-#' then the variable importance will be calculated and the relevant slot in \code{nano$varimp}
+#' @param subdir sub directory of the working directory in which the plot should be saved.
+#' @param file_type file type in which the plots should be saved. Can take values `html`, `jpeg`,
+#' `png`, `pdf`.  
+#' @return nano object with PDPs of specified models calculated. Also returns a 
+#' plot if \code{plot = TRUE} and saves each of the plots if \code{save = TRUE}..
+#' @details Function first checks if the PDPs of the specified models have already 
+#' been calculated (by checking in the list \code{nano$pdp}). If it has not been calculated, 
+#' then the required PDPs will be calculated and the relevant slot in \code{nano$pdp}
 #' will be filled out. 
 #' 
-#' If \code{plot = TRUE}, a plot of the variable importance will also be returned. The plot can
+#' If \code{plot = TRUE}, a plot of the PDPs will also be returned. The plot can
 #' be saved in a subfolder of the working directory by using the `save` and `subdir` arguments.
 #' @examples 
 #' \dontrun{
@@ -58,16 +58,17 @@
 #'                     data = list(property_prices), # since underlying dataset is the same 
 #'                     ) # since model is not entered, will take best model from grids
 #'  
-#'  # calculate PDP
-#'  obj <- nano_pdp(nano = obj, model_no = 1:2, vars <- c("lot_size", "income"))
+#'  # calculate PDP and save plots in working directory
+#'  obj <- nano_pdp(nano = obj, model_no = 1:2, vars <- c("lot_size", "income"), 
+#'  plot = TRUE, save = TRUE)
 #'  
 #'  }
 #' }
 #' @rdname nano_pdp
 #' @export 
 
-nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, subtitle = NA, 
-                      save = FALSE, subdir = NA, file_name) {
+nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE,
+                      save = FALSE, subdir = NA, file_type = "html") {
   
   if (class(nano) != "nano") {
     stop("`nano` must be a nano object.", 
@@ -118,6 +119,10 @@ nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, su
              call. = FALSE)
       }
     }
+  }
+  
+  if (!(file_type %in% c("html", "jpeg", "png", "pdf"))) {
+    stop("Invalid value for `file_type`. Must either be `html`, `jpeg`, `png`, `pdf`.")
   }
   
   
@@ -198,6 +203,96 @@ nano_pdp <- function (nano, model_no = NA, vars, row_index = -1, plot = TRUE, su
       }
     }
   }
-  return(nano)
+  
   # create plots
+  if (plot) {
+    pdp <- data.table::data.table()
+    model_ids <- c()
+    for (i in 1:length(model_no)) {
+      # combined data for required pdps
+      pdp <- rbind(pdp, nano$pdp[[model_no[i]]])
+      # extract model ids
+      model_ids <- c(model_ids, rep(nano$model[[model_no[i]]]@model_id, nrow(nano$pdp[[model_no[i]]])))
+    }
+    # keep required columns
+    pdp <- pdp[, .(var_band, mean_response, var)]
+    pdp[, model_id := model_ids]
+    
+    # function to create plots of pdps
+    pdp_plot <- function(pdp, vars) {
+      # initialise list to hold plots
+      pdps <- rep(list(NA), length(vars))
+      for (var_name in vars) { 
+        # subset for required variable
+        dat <- pdp[var == var_name]
+        # create line plot by model
+        fig <- nano:::quiet(plotly::plot_ly(data = dat,
+                                            x = ~var_band, 
+                                            y = ~mean_response, 
+                                            split = ~model_id,
+                                            type = "scatter", 
+                                            color = ~model_id, 
+                                            legendgroup = ~model_id,
+                                            mode = "lines+markers",
+                                            showlegend = TRUE) %>% 
+                                      layout(xaxis = list(title = var_name,
+                                                          hoverformat = ",.2s"),
+                                             yaxis = list(hoverformat = ",.2s"),
+                                             legend = list(orientation = "h")))
+        pdps[[var_name]] <- fig
+      }
+      return(pdps)
+    }
+    
+    # create plots of pdps
+    pdp_plots <- pdp_plot(pdp, unique(pdp$var))
+    # save plots in nano object
+    nano$pdp[["plots"]] <- pdp_plots
+    
+    # export plots as separate files for each variable
+    if (save) {
+      folder_name <- paste0("PDP Plots for Models ", paste(model_no, collapse = "-"))
+      # export as html
+      if (file_type == "html") {
+        if (is.na(sub_dir)) {
+          # create folder to save plots if doesn't already exist
+          dir <- paste0(".\\", folder_name)
+          if(!dir.exists(dir)){
+            dir.create(dir)
+          }
+          for (var in vars) {
+            htmlwidgets::saveWidget(pdp_plots[[var]], file = paste0(dir, "\\", var, "_pdp_plot.html"))
+          }
+        } else {
+          dir <- paste0(".\\", sub_dir, "\\", folder_name)
+          if(!dir.exists(dir)){
+            dir.create(dir)
+          }
+          for (var in vars) {
+            htmlwidgets::saveWidget(pdp_plots[[var]], file = paste0(dir, "\\", var, "_pdp_plot.html"))
+          }
+        }
+      } else { # export as static image
+        if (is.na(sub_dir)) {
+          dir <- paste0(".\\", folder_name)
+          if(!dir.exists(dir)){
+            dir.create(dir)
+          }
+          for (var in vars) {
+            plotly::export(pdp_plots[[var]], file= paste0(dir, "\\", var, "_pdp_plot.", file_type))
+          }
+        } else {
+          dir <- paste0(".\\", sub_dir, "\\", folder_name)
+          if(!dir.exists(dir)){
+            dir.create(dir)
+          }
+          for (var in vars) {
+            plotly::export(pdp_plots[[var]], file = paste0(dir, "\\", var, "_pdp_plot.", file_type))
+          }
+        }
+      }
+    }
+  }
+  
+  return(nano)
 }  
