@@ -10,10 +10,9 @@ nano_pdp(
   vars,
   row_index = -1,
   plot = TRUE,
-  subtitle = NA,
   save = FALSE,
   subdir = NA,
-  file_name
+  file_type = "html"
 )
 }
 \arguments{
@@ -27,29 +26,28 @@ use entire dataset, set to -1.}
 
 \item{plot}{a logical specifying whether the variable importance should be plotted.}
 
-\item{subtitle}{subtitle for the plot.}
-
 \item{save}{a logical specifying whether the plot should be saved into working directory.}
 
-\item{subdir}{sub directory in which the plot should be saved.}
+\item{subdir}{sub directory of the working directory in which the plot should be saved.}
 
-\item{file_name}{file name of the saved plot.}
+\item{file_type}{file type in which the plots should be saved. Can take values \code{html}, \code{jpeg},
+\code{png}, \code{pdf}.}
 }
 \value{
-nano object with variable importance of specified models calculated. Also returns a
-plot if \code{plot = TRUE}.
+nano object with PDPs of specified models calculated. Also returns a
+plot if \code{plot = TRUE} and saves each of the plots if \code{save = TRUE}..
 }
 \description{
 Creates partial dependency plots (PDPs) from h2o models stored i nano
 objects.
 }
 \details{
-Function first checks if the variable importance of the specified model has already
-been calculated (by checking in the list \code{nano$varimp}). If it has not been calculated,
-then the variable importance will be calculated and the relevant slot in \code{nano$varimp}
+Function first checks if the PDPs of the specified models have already
+been calculated (by checking in the list \code{nano$pdp}). If it has not been calculated,
+then the required PDPs will be calculated and the relevant slot in \code{nano$pdp}
 will be filled out.
 
-If \code{plot = TRUE}, a plot of the variable importance will also be returned. The plot can
+If \code{plot = TRUE}, a plot of the PDPs will also be returned. The plot can
 be saved in a subfolder of the working directory by using the \code{save} and \code{subdir} arguments.
 }
 \examples{
@@ -90,8 +88,9 @@ if(interactive()){
                     data = list(property_prices), # since underlying dataset is the same 
                     ) # since model is not entered, will take best model from grids
  
- # calculate PDP
- obj <- nano_pdp(nano = obj, model_no = 1:2, vars <- c("lot_size", "income"))
+ # calculate PDP and save plots in working directory
+ obj <- nano_pdp(nano = obj, model_no = 1:2, vars <- c("lot_size", "income"), 
+ plot = TRUE, save = TRUE)
  
  }
 }

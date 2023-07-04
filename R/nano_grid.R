@@ -37,7 +37,9 @@
 #' @param max_models a numeric. Maximum number of models to be built.
 #' @param max_runtime_secs a numeric. Maximum amount of time (sec) spent building models.
 #' @param stopping_metric a character. Metric used to determine whether to terminate fitting
-#' process.
+#' process. This is used for sorting the fitted models and determining the best model in the 
+#' grid. The default for regression models is `deviance` while the for classification models
+#' is `logloss`. 
 #' @param stopping_tolerance a numeric. Minimum threshold for the `stopping_metric` to 
 #' improve by to continue the fitting process. 
 #' @param stopping_rounds a numeric. Number of rounds in which if the `stopping_metric` has 
@@ -237,8 +239,8 @@ nano_grid <- function (nano = nano::create_nano(), response, algo, data, test,
   
   
 
-  # sort the grid models by metric and select best model
-  grid <- h2o.getGrid(grid_id, decreasing = FALSE)
+  # sort the grid models by stopping metric and select best model
+  grid <- h2o.getGrid(grid_id, sort_by = stopping_metric, decreasing = FALSE)
   
   # print leaderboard
   if (nrow(grid@summary_table) == 0) {

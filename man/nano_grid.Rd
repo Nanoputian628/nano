@@ -90,7 +90,9 @@ Only required when more than 1 combination of hyper-parameters are entered.}
 \item{max_runtime_secs}{a numeric. Maximum amount of time (sec) spent building models.}
 
 \item{stopping_metric}{a character. Metric used to determine whether to terminate fitting
-process.}
+process. This is used for sorting the fitted models and determining the best model in the
+grid. The default for regression models is \code{deviance} while the for classification models
+is \code{logloss}.}
 
 \item{stopping_tolerance}{a numeric. Minimum threshold for the \code{stopping_metric} to
 improve by to continue the fitting process.}
