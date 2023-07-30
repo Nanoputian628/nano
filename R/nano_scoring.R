@@ -9,7 +9,8 @@
 #' @param train_test a character. Variable in `data` which contains split for training, 
 #' testing and holdout datasets (optional). Can only have the values: "train", "test", 
 #' "holdout".
-#' @param save a logical specifying whether the .
+#' @param save a logical specifying whether to save the output to the nano object (if \code{save = TRUE})
+#' otherwise output as separate object..
 #' @return if \code{save = TRUE} then returns nano object with the specified models scored. If
 #' \code{save = FALSE} then returns a list with the specified models scored.
 #' @details Functions checks whether the data contains the `train_test` column. If it does then
@@ -73,16 +74,6 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
          call. = FALSE)
   }
   
-  # if (all(!is.na(data))) {
-  #   for (i in 1:length(data)) {
-  #     response <- nano$meta[[i]]$y
-  #     if (!response %in% names(data[[i]])) {
-  #       stop(paste("'response' is not a column in `data`."), 
-  #            call. = FALSE)
-  #     }  
-  #   }  
-  # }
-  
   if (!all(is.na(model_no))) {
     if (!is.integer(as.integer(model_no))) {
       stop("`model_no` must be numeric.", 
@@ -121,8 +112,10 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
   # if choosing not to save to nano object, save outputs to a separate list
   if (!save) {
     final_out <- list()
-    final_out[["data"]] <- list()
-    final_out[["plot"]] <- list()
+    final_out[["pred vs actual"]][["data"]] <- list()
+    final_out[["pred vs actual"]][["plot"]] <- list()
+    final_out[["actual vs pred"]][["data"]] <- list()
+    final_out[["actual vs pred"]][["plot"]] <- list()
   }
   
   # convert data to list of datasets if required
@@ -132,7 +125,13 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
   
   # remove last percentile if it is 1
   if (percentiles[length(percentiles)] == 1) {percentiles <- percentiles[1:length(percentiles)-1]}
-  
+
+  # custom function to round down to significant figures
+  down_signif <- function(x, digits = 0) {
+    m <- 10^(ceiling(log(x, 10)) - digits)
+    (x %/% m)*m
+  }
+    
   for (i in 1:length(model_no)) {
     # obtain required model data
     response <- nano$meta[[model_no[i]]]$y
@@ -146,9 +145,13 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
         # subset for holdout data
         split_dat <- dat[data_id == split]
         # predict on data
-        split_dat[, predict := as.vector(h2o.predict(mod, as.h2o(split_dat)))]
-        # band predictions into required percentiles
-        var_percentiles <- h2o::signif(as.vector(quantile(split_dat[[response]], percentiles, na.rm = TRUE)), 4)
+        split_dat[, predict := as.vector(h2o::h2o.predict(mod, h2o::as.h2o(split_dat)))]
+        
+        ## Score for predicted vs actuals
+        # band actuals into required percentiles
+        var_percentiles <- as.vector(quantile(split_dat[[response]], percentiles, na.rm = TRUE))
+        var_percentiles[1] <- down_signif(var_percentiles[1], 4) # round down first value to ensure all values are captured in the band
+        var_percentiles <- h2o::signif(var_percentiles)
         intervals <- list()
         intervals[[response]] <- var_percentiles
         split_dat <- nano::band_data(split_dat, intervals)
@@ -178,18 +181,64 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
 
         # save data to nano object or to separate list
         if (save) {
-          nano$metric[[model_no[i]]]$scoring_dat[[split]] <- predict_sum
-          nano$metric[[model_no[i]]]$scoring_fig[[split]] <- fig
+          nano$metric[[model_no[i]]]$pred_vs_actual$scoring_dat[[split]] <- predict_sum
+          nano$metric[[model_no[i]]]$pred_vs_actual$scoring_fig[[split]] <- fig
         } else {
-          final_out[["data"]][[paste0("data_", model_no[i])]][[split]] <- predict_sum
-          final_out[["plot"]][[paste0("plot_", model_no[i])]][[split]] <- fig
+          final_out[["pred vs actual"]][["data"]][[paste0("data_", model_no[i])]][[split]] <- predict_sum
+          final_out[["pred vs actual"]][["plot"]][[paste0("plot_", model_no[i])]][[split]] <- fig
+        }
+        
+        
+        ## Score for actuals vs predicted
+        # band predictions into required percentiles
+        var_percentiles <- as.vector(quantile(split_dat[["predict"]], percentiles, na.rm = TRUE))
+        var_percentiles[1] <- down_signif(var_percentiles[1], 4) # round down first value to ensure all values are captured in the band
+        var_percentiles <- h2o::signif(var_percentiles)
+        intervals <- list()
+        intervals[["predict"]] <- var_percentiles
+        split_dat <- nano::band_data(split_dat, intervals)
+        # summarised data by percentiles
+        predict_sum <- split_dat[, .(response = mean(get(response), na.rm = TRUE), 
+                                     predict = mean(predict, na.rm = TRUE)), 
+                                 by = predict_bnd]
+        predict_sum <- predict_sum[order(predict)]
+        
+        # plot data
+        fig <- plotly::plot_ly(data = predict_sum,
+                               x = ~predict_bnd, 
+                               y = ~predict, 
+                               type = "scatter",
+                               mode = "lines+markers",
+                               name = "Predict")
+        fig <- plotly::add_trace(fig,
+                                 y = ~response, 
+                                 type = "scatter",
+                                 mode = "lines+markers",
+                                 name = paste0("Actual ", stringr::str_to_title(response))) %>% 
+          layout(xaxis = list(title = paste0("Percentiles of Predicted ", stringr::str_to_title(response)),
+                              hoverformat = ",.2s"),
+                 yaxis = list(title = "Actual", hoverformat = ",.2s"),
+                 title = paste0("Actual vs Predicted ", stringr::str_to_title(response), " for ", stringr::str_to_title(split), " Data"))
+        
+        # save data to nano object or to separate list
+        if (save) {
+          nano$metric[[model_no[i]]]$actual_vs_pred$scoring_dat[[split]] <- predict_sum
+          nano$metric[[model_no[i]]]$actual_vs_pred$scoring_fig[[split]] <- fig
+        } else {
+          final_out[["actual vs pred"]][["data"]][[paste0("data_", model_no[i])]][[split]] <- predict_sum
+          final_out[["actual vs pred"]][["plot"]][[paste0("plot_", model_no[i])]][[split]] <- fig
         }
       }
     } else { # if data not split by train/test/holdout, perform calculation on total data level
       # predict on data
-      dat[, predict := as.vector(h2o.predict(mod, as.h2o(dat)))]
+      dat[, predict := as.vector(h2o::h2o.predict(mod, h2o::as.h2o(dat)))]
+      
+      
+      ## Score for predicted vs actuals
       # band predictions into required percentiles
-      var_percentiles <- h2o::signif(as.vector(quantile(dat[[response]], percentiles, na.rm = TRUE)), 4)
+      var_percentiles <- as.vector(quantile(dat[[response]], percentiles, na.rm = TRUE))
+      var_percentiles[1] <- down_signif(var_percentiles[1], 4) # round down first value to ensure all values are captured in the band
+      var_percentiles <- h2o::signif(var_percentiles)
       intervals <- list()
       intervals[[response]] <- var_percentiles
       dat <- nano::band_data(dat, intervals)
@@ -219,11 +268,52 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
 
       # save data to nano object or to separate list
       if (save) {
-        nano$metric[[model_no[i]]]$scoring_dat[["all"]] <- predict_sum
-        nano$metric[[model_no[i]]]$scoring_fig[["all"]] <- fig
+        nano$metric[[model_no[i]]]$pred_vs_actual$scoring_dat[["all"]] <- predict_sum
+        nano$metric[[model_no[i]]]$pred_vs_actual$scoring_fig[["all"]] <- fig
       } else {
-        final_out[["data"]][[paste0("data_", model_no[i])]][["all"]] <- predict_sum
-        final_out[["plot"]][[paste0("plot_", model_no[i])]][["all"]] <- fig
+        final_out[["pred vs actual"]][["data"]][[paste0("data_", model_no[i])]][["all"]] <- predict_sum
+        final_out[["pred vs actual"]][["plot"]][[paste0("plot_", model_no[i])]][["all"]] <- fig
+      }
+      
+      
+      ## Score for actuals vs predicted
+      # band predictions into required percentiles
+      var_percentiles <- as.vector(quantile(dat[["predict"]], percentiles, na.rm = TRUE))
+      var_percentiles[1] <- down_signif(var_percentiles[1], 4) # round down first value to ensure all values are captured in the band
+      var_percentiles <- h2o::signif(var_percentiles)
+      intervals <- list()
+      intervals[["predict"]] <- var_percentiles
+      dat <- nano::band_data(dat, intervals)
+      # summarised data by percentiles
+      predict_sum <- dat[, .(response = mean(get(response), na.rm = TRUE), 
+                             predict = mean(predict, na.rm = TRUE)), 
+                         by = predict_bnd]
+      predict_sum <- predict_sum[order(predict)]
+      
+      # plot data
+      fig <- plotly::plot_ly(data = predict_sum,
+                             x = ~predict_bnd, 
+                             y = ~predict, 
+                             type = "scatter",
+                             mode = "lines+markers",
+                             name = "Predict")
+      fig <- plotly::add_trace(fig,
+                               y = ~response, 
+                               type = "scatter",
+                               mode = "lines+markers",
+                               name = paste0("Actual ", stringr::str_to_title(response))) %>% 
+        layout(xaxis = list(title = paste0("Percentiles of Predicted ", stringr::str_to_title(response)),
+                            hoverformat = ",.2s"),
+               yaxis = list(title = "Actual", hoverformat = ",.2s"),
+               title = paste0("Predicted vs Actual ", stringr::str_to_title(response), " for ", stringr::str_to_title(split), " Data"))
+      
+      # save data to nano object or to separate list
+      if (save) {
+        nano$metric[[model_no[i]]]$actual_vs_pred$scoring_dat[["all"]] <- predict_sum
+        nano$metric[[model_no[i]]]$actual_vs_pred$scoring_fig[["all"]] <- fig
+      } else {
+        final_out[["actual vs pred"]][["data"]][[paste0("data_", model_no[i])]][["all"]] <- predict_sum
+        final_out[["actual vs pred"]][["plot"]][[paste0("plot_", model_no[i])]][["all"]] <- fig
       }
     }
   }

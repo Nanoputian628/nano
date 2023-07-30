@@ -4,7 +4,7 @@
 \alias{nano_init}
 \title{Connect to H2O Cluster}
 \usage{
-nano_init(min_mem_size = NULL, max_mem_size = NULL)
+nano_init(min_mem_size = NULL, max_mem_size = NULL, nthreads = -1)
 }
 \arguments{
 \item{min_mem_size}{a character string specifying the minimum size, in bytes, of the memory
@@ -12,6 +12,9 @@ allocation pool in H2O.}
 
 \item{max_mem_size}{a character string specifying the maximum size, in bytes, of the memory
 allocation pool in H2O.}
+
+\item{nthreads}{a numeric specifying the number of threads in the thread pool. This relates very closely to the number of CPUs used.
+-1 means use all CPUs on the host (default values). A positive integer specifies the number of CPUs directly.}
 }
 \description{
 Starts and connect to a H2O cluster.
