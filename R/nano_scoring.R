@@ -128,8 +128,12 @@ nano_scoring <- function (nano, data = NA, model_no = NA, percentiles,
 
   # custom function to round down to significant figures
   down_signif <- function(x, digits = 0) {
-    m <- 10^(ceiling(log(x, 10)) - digits)
-    (x %/% m)*m
+    if (x == 0) {
+      return(0)
+    } else {
+      m <- 10^(ceiling(log(x, 10)) - digits)
+      return((x %/% m)*m)
+    }
   }
     
   for (i in 1:length(model_no)) {
